@@ -94,13 +94,10 @@ func (e *FastwalkEngine) Scan(path string, opts ScanOptions) (*ScanResult, error
 			return nil
 		}
 
-		// Check MaxDepth
-		if opts.MaxDepth > 0 && depth > opts.MaxDepth {
-			if d.IsDir() {
-				return fastwalk.SkipDir
-			}
-			return nil
-		}
+		// MaxDepth: controls display grouping, NOT traversal depth.
+		// We always traverse all files to accumulate correct sizes,
+		// but only create separate top-level entries for depth <= MaxDepth.
+		// Files beyond MaxDepth still contribute to their ancestor's size.
 
 		// Check exclusions on base name
 		baseName := strings.ToLower(filepath.Base(entryPath))
