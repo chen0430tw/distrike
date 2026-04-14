@@ -1088,10 +1088,98 @@ func checkSMARTHealth(device StorageDevice) *HealthAlert {
 - [ ] VMDK/VDI 压缩集成
 - [ ] Everything SDK 集成（可选）
 
-### Phase 6: 监控与通知
-- [ ] 定时扫描（cron / Windows Task Scheduler）
-- [ ] 斩杀线告警通知
-- [ ] 趋势报告（空间变化曲线）
+### Phase 6: 容量反弹监控模式
+
+**起因**：Distrike 开发者在 2026-04-14 手动清理了 33.7 GB 磁盘空间。三天后发现 C 盘又从 3.8 GB 剩余跌到接近 0。用 `distrike scan --after 3d` 追查发现 QQ 消息数据库 3 天内写入 15.6 GB，Claude Code VM 增长 9.3 GB，各种应用缓存持续膨胀——空间被"反弹"吃回去了。
+
+**问题本质**：清理是一次性的，但应用写入是持续的。没有监控就不知道空间什么时候、被什么程序吃掉的。等到磁盘满了再查，已经来不及了。
+
+**灵感来源**：杀毒软件的即时防护（real-time protection）。杀软通过 minifilter/fanotify 钩子监控文件写入检测恶意行为；Distrike 通过 USN Journal 监控文件写入检测容量反弹。hook 点相同，过滤逻辑不同。
+
+**核心功能**：`distrike watch` — 容量反弹监控守护进程
+
+```bash
+# 启动监控（前台）
+distrike watch C: --kill-line 20GB
+
+# 后台守护
+distrike watch --daemon --all
+
+# 查看监控状态
+distrike watch --status
+```
+
+**架构**：
+
+```
+USN Journal (FSCTL_READ_USN_JOURNAL)
+    │
+    │  实时流式读取文件变更记录
+    ▼
+┌─────────────────────────────────────┐
+│  Watch Goroutine (持续运行)          │
+│                                     │
+│  for each USN record:               │
+│    1. Bitset 检查: 已知文件?         │
+│    2. 累积写入量 (sliding window)    │
+│    3. 检查斩杀线距离                 │
+│    4. 检查单文件暴涨 (>100MB/min)    │
+│    5. 检查总写入速率                 │
+└─────────┬───────────────────────────┘
+          │
+          ▼  触发条件满足时
+┌─────────────────────────────────────┐
+│  Alert System                       │
+│                                     │
+│  YELLOW: 写入速率异常               │
+│  RED:    接近斩杀线 (<5GB)          │
+│  PURPLE: 已跌破斩杀线              │
+│                                     │
+│  通知方式:                          │
+│  - Windows: Toast notification      │
+│  - macOS: osascript                 │
+│  - Linux: notify-send               │
+│  - 通用: stderr + JSON log          │
+└─────────────────────────────────────┘
+```
+
+**告警规则**：
+
+| 触发条件 | 灯号 | 动作 |
+|----------|------|------|
+| 单文件 10 分钟内增长 >500MB | YELLOW | 报告文件名和增长量 |
+| 剩余空间 < kill_line × 1.5 | YELLOW | 建议运行 hunt |
+| 剩余空间 < kill_line | RED | 自动运行 hunt --risk safe |
+| 剩余空间 < 1GB | PURPLE | 紧急告警 + 自动清理 safe 猎物 |
+| 1 小时内总写入 > 10GB | YELLOW | 报告写入热点目录 |
+
+**配置**（Config.md 已预留）：
+
+```yaml
+watch:
+  enabled: true
+  interval: 5s              # USN 轮询间隔
+  alert_threshold: 500MB    # 单文件暴涨阈值
+  hourly_write_limit: 10GB  # 每小时总写入告警
+  auto_clean_on_purple: true
+  notify_method: auto       # toast / osascript / notify-send / stderr
+```
+
+**与 Phase 4-5 的集成**：
+
+- 首次启动 watch 时执行一次 MFT 全量扫描建立基线
+- 保存 USN cursor + node map 到 SQLite
+- 后续只读 USN delta，用 bitset 定位变更
+- 定期（每 6 小时）重新全量扫描校准
+
+**实现计划**：
+- [ ] `distrike watch` 命令 + goroutine 持续读 USN
+- [ ] 滑动窗口写入速率计算
+- [ ] 斩杀线距离实时检查
+- [ ] Windows Toast 通知
+- [ ] macOS/Linux 通知
+- [ ] `--daemon` 后台运行模式
+- [ ] 监控日志 JSON 输出（Agent 可读）
 
 ---
 
