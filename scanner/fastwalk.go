@@ -35,10 +35,18 @@ func (e *FastwalkEngine) Scan(path string, opts ScanOptions) (*ScanResult, error
 		return nil, fmt.Errorf("getting disk usage for %s: %w", absPath, err)
 	}
 
-	// Determine worker count
+	// Determine worker count based on storage type
 	workers := opts.Workers
 	if workers <= 0 {
-		workers = runtime.GOMAXPROCS(0) * 2
+		switch detectStorageType(absPath) {
+		case StorageHDD:
+			workers = 1
+		case StorageSSD:
+			workers = runtime.GOMAXPROCS(0) * 2
+		default:
+			// Unknown storage — conservative default
+			workers = runtime.GOMAXPROCS(0)
+		}
 	}
 
 	// Build exclude set for fast lookup

@@ -36,18 +36,9 @@ type ScanResult struct {
 // SelectEngine picks the best available engine for the given path.
 // Priority: MFT (Windows Admin + NTFS) > Cache (if fresh) > fastwalk
 func SelectEngine(path string, engineHint string) Engine {
-	// Phase 4: MFT engine selection
-	// if engineHint == "mft" || (engineHint == "auto" && isAdmin() && isNTFS(path)):
-	//     return &MFTEngine{}
+	if engineHint == "mft" || (engineHint == "auto" && isAdmin() && isNTFS(path)) {
+		return &MFTEngine{}
+	}
 
 	return &FastwalkEngine{}
-}
-
-// isAdmin checks if the current process has administrator/root privileges.
-// Stub for Phase 4 MFT support.
-func isAdmin() bool {
-	// TODO: Phase 4 — implement platform-specific admin detection
-	// Windows: use golang.org/x/sys/windows to check token elevation
-	// Linux/macOS: check os.Getuid() == 0
-	return false
 }
