@@ -123,16 +123,19 @@ func (e *FastwalkEngine) Scan(path string, opts ScanOptions) (*ScanResult, error
 			modTime = info.ModTime()
 		}
 
-		// CollectAll: record every directory for hunt rule matching
-		if opts.CollectAll && d.IsDir() {
-			allDirsMu.Lock()
-			allDirs = append(allDirs, DirEntry{
-				Path:         entryPath,
-				SizeBytes:    0, // will be set to accumulated size below if top-level
-				IsDir:        true,
-				LastModified: modTime,
-			})
-			allDirsMu.Unlock()
+		// CollectAll: record directories + virtual disk files for hunt rule matching
+		if opts.CollectAll {
+			isVDisk := !d.IsDir() && isVDiskExt(baseName)
+			if d.IsDir() || isVDisk {
+				allDirsMu.Lock()
+				allDirs = append(allDirs, DirEntry{
+					Path:         entryPath,
+					SizeBytes:    fileSize, // non-zero for vdisk files
+					IsDir:        d.IsDir(),
+					LastModified: modTime,
+				})
+				allDirsMu.Unlock()
+			}
 		}
 
 		// Determine which top-level entry this belongs to
@@ -221,4 +224,14 @@ func (e *FastwalkEngine) Scan(path string, opts ScanOptions) (*ScanResult, error
 	}
 
 	return result, nil
+}
+
+// isVDiskExt checks if a filename has a virtual disk extension.
+func isVDiskExt(name string) bool {
+	for _, ext := range []string{".vhdx", ".vmdk", ".vdi", ".qcow2"} {
+		if strings.HasSuffix(name, ext) {
+			return true
+		}
+	}
+	return false
 }
