@@ -667,54 +667,114 @@ distrike/
 ### 7.3 扫描引擎分级
 
 ```
-┌─────────────────────────────────────────────────────┐
-│              Scan Engine Selection                    │
-│                                                       │
-│  engine=auto (默认)                                   │
-│      │                                                │
-│      ├── Windows + Admin + NTFS?                      │
-│      │    └── YES → MFT 直读 (3秒/TB)                │
-│      │         使用 Velocidex/go-ntfs                 │
-│      │         解析 $MFT → 重建目录树 → Top-N         │
-│      │                                                │
-│      ├── 有 SQLite 缓存且未过期?                       │
-│      │    └── YES → 缓存读取 (<100ms)                 │
-│      │                                                │
-│      └── 默认 → fastwalk 并发遍历                     │
-│           使用 charlievieth/fastwalk                   │
-│           Worker pool = GOMAXPROCS × 2                │
-│           SSD 自动并发 / HDD 串行                     │
-│           Top-N min-heap，内存固定                     │
-│                                                       │
-│  进度输出 → stderr (不污染 JSON stdout)               │
-└─────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│              Scan Engine Selection                         │
+│                                                            │
+│  engine=auto (默认)                                        │
+│      │                                                     │
+│      ├── Windows + Admin + NTFS?                           │
+│      │    └── YES → MFT 直读 (18秒/454GB 实测)            │
+│      │         自定义二进制 MFT 解析器                     │
+│      │         go-ntfs 仅用于 bootstrap 定位 $MFT          │
+│      │                                                     │
+│      ├── 有 SQLite 缓存且未过期?                            │
+│      │    └── YES → 缓存读取 (瞬间)                        │
+│      │                                                     │
+│      └── 默认 → fastwalk 并发遍历                          │
+│           charlievieth/fastwalk + HDD/SSD 自动检测         │
+│           SSD: GOMAXPROCS×2 workers / HDD: 1 worker        │
+│                                                            │
+│  进度输出 → stderr (不污染 JSON stdout)                    │
+└──────────────────────────────────────────────────────────┘
 ```
 
-**速度对比（预估，1TB SSD）：**
+**速度实测（454GB NTFS SSD，2.2M MFT 记录）：**
 
 | 引擎 | 速度 | 要求 |
 |------|------|------|
-| MFT 直读 | ~3 秒 | Windows Admin + NTFS |
-| SQLite 缓存 | <100 毫秒 | 有未过期缓存 |
-| fastwalk | ~5-15 秒 | 通用 |
-| stdlib WalkDir | ~30-60 秒 | 最慢 fallback |
+| MFT 直读 | **18 秒** | Windows Admin + NTFS |
+| SQLite 缓存 | 瞬间 | 有未过期缓存 |
+| fastwalk | 14-31 秒 | 通用 |
 
-### 7.4 MFT 直读流程（Windows Admin 模式）
+### 7.4 MFT 引擎架构（Möbius Ring + OPU Batch I/O）
+
+MFT 引擎不使用 go-ntfs 的 `ParseMFTFile`（太慢：完整属性解析 20+ 字段），而是自定义二进制解析器只提取 4 个字段。
+
+**三遍 Möbius 环流水线：**
 
 ```
-1. OpenVolume("\\.\C:") + GENERIC_READ
-2. 读取 Boot Sector → 定位 $MFT 起始簇
-3. 顺序读取所有 MFT 记录（1KB/记录）
-4. 解析每条记录:
-   - $FILE_NAME → 文件名
-   - $DATA → 文件大小
-   - Parent FRN → 父目录引用
-5. 根据 Parent FRN 重建目录树
-6. 计算每个目录的累计大小
-7. Top-N 排序输出
+Pass 1: OPU 批量 I/O + 并行解析
+┌─────────────┐    ┌──────────────────┐    ┌──────────────┐
+│  Producer    │    │  Worker Pool     │    │  Node Map    │
+│  (single)    │───→│  (N goroutines)  │───→│  (merge)     │
+│              │    │                  │    │              │
+│  ReadAt 1MB  │    │  parseMFTRecord  │    │  2M+ nodes   │
+│  (1024 rec)  │    │  applyFixup      │    │              │
+│  batch read  │    │  4 fields only   │    │              │
+└─────────────┘    └──────────────────┘    └──────────────┘
+     OPU-style                                    │
+     prefetch                                     ▼
+     coalescing                        Pass 1.5: Ring Buffer
+                                       ┌──────────────────┐
+                                       │  Sort by entryID  │
+                                       │  2MB ring window  │
+                                       │  sequential I/O   │
+                                       │  14330/14895 解析 │
+                                       └────────┬─────────┘
+                                                │
+                                       Pass 1.5b: Möbius Twist
+                                       ┌──────────────────┐
+                                       │  仅 15 个 owner  │
+                                       │  (非 31K 空叶)    │
+                                       │  chase data runs  │
+                                       │  non-resident AL  │
+                                       └────────┬─────────┘
+                                                │
+                                                ▼
+                                       Phase 2: 目录树链接
+                                       ┌──────────────────┐
+                                       │  parent-child     │
+                                       │  保留 metafile    │
+                                       │  (Möbius 交界面)  │
+                                       └────────┬─────────┘
+                                                │
+                                                ▼
+                                       Phase 3: 拓扑排序
+                                       ┌──────────────────┐
+                                       │  叶→根累积 size   │
+                                       │  Kahn's algorithm │
+                                       └──────────────────┘
 ```
 
-关键：整个过程只需一次顺序 I/O 读取 MFT 文件（通常 300-500 MB），不需要遍历目录。
+**性能分解（454GB NTFS 实测）：**
+
+| 阶段 | 耗时 | 说明 |
+|------|-----:|------|
+| Phase 1 读取+解析 | 10.3s | 1MB 批量 I/O + N-worker 并行解析 |
+| Phase 1.5 Ring + Möbius | 5.0s | 排序后顺序读 + 15 个目标 Möbius |
+| Phase 2 目录树链接 | 0.7s | 200 万节点 parent-child |
+| Phase 3 累积大小 | 2.1s | 拓扑排序 bottom-up 传播 |
+| **总计** | **18.3s** | |
+
+**关键优化：**
+
+1. **OPU 批量预取**（借鉴 treesea/OPU FrictionPolicy）：每次 ReadAt 读 1MB（1024 条记录），而非逐条 1KB。I/O 系统调用减少 1000 倍。
+
+2. **自定义 MFT 解析器**：直接从 1KB 二进制记录提取 `$FILE_NAME`（文件名+父 FRN）和 `$DATA`（文件大小），跳过 go-ntfs 的完整属性枚举（时间戳×8、ADS、flags、logfile seq 等 20+ 无用字段）。
+
+3. **NTFS Fixup**：应用 update sequence array 还原扇区边界字节，否则属性数据被 USN 值污染导致 TB 级溢出。
+
+4. **Möbius 环 $ATTRIBUTE_LIST 解析**：
+   - 正面（resident）：直接解析 attribute list 获取外部 `$DATA` 引用
+   - 反面（non-resident）：解码 NTFS data runs → 读取 attribute list 内容 → 解析引用
+   - 交界面：目录树本身——不删除任何节点（包括 metafile），保持 Möbius 环连续性
+   - 叶节点集中度优化：只处理 15 个真正未解析的 owner，不遍历 31K+ 空叶子
+
+5. **Ring Buffer 顺序化**：将 14895 个随机外部引用按 entry number 排序，用 2MB 滑动窗口顺序读取，将随机 I/O 转化为顺序 I/O。
+
+6. **sectorAlignedReader**：Windows raw volume 要求读取大小为 512 字节的整数倍，包装层自动对齐。
+
+**可见内核文件**：MFT 引擎能看到 `hiberfil.sys`、`pagefile.sys`、`swapfile.sys` 等被内核锁定的文件——因为读的是磁盘扇区而非文件句柄。
 
 ### 7.5 扫描缓存（借鉴 gdu）
 
