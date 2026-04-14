@@ -1,0 +1,36 @@
+{
+  "title": "Distrike Language Selection",
+  "target": "Select the optimal implementation language for Distrike, a cross-platform Agent-friendly disk space kill-line detector with MFT direct-read capability",
+  "constraints": [
+    "must compile to single static binary (no runtime dependency)",
+    "must cross-compile to Windows/macOS/Linux from one codebase",
+    "must support concurrent directory traversal (goroutine/thread pool)",
+    "must have NTFS MFT parsing library available",
+    "must integrate with existing cygctl Go ecosystem",
+    "must support SQLite for scan caching without CGO",
+    "developer has Go experience (cygctl), limited Rust/Zig experience"
+  ],
+  "resources": {
+    "budget": 0.85,
+    "infrastructure": 0.90,
+    "data_coverage": 0.78,
+    "population_coupling": 0.70
+  },
+  "environment": {
+    "field_noise": 0.25,
+    "social_pressure": 0.30,
+    "regulatory_friction": 0.15,
+    "network_density": 0.82,
+    "phase_instability": 0.20
+  },
+  "subject": {
+    "output_power": 0.88,
+    "control_precision": 0.75,
+    "load_tolerance": 0.80,
+    "aim_coupling": 0.92,
+    "stress_level": 0.15,
+    "phase_proximity": 0.45,
+    "marginal_decay": 0.10,
+    "instability_sensitivity": 0.20
+  }
+}

@@ -1,0 +1,167 @@
+{
+  "profile": "quick",
+  "elapsed_s": 3.84,
+  "top_results": [
+    {
+      "rank": 1,
+      "family": "batch",
+      "template": "batch_route",
+      "n": 20000,
+      "final_score": 0.267835,
+      "balanced_score": -0.164672,
+      "feasibility": 0.457414,
+      "stability": 0.477389,
+      "risk": 0.538599
+    },
+    {
+      "rank": 2,
+      "family": "batch",
+      "template": "batch_route",
+      "n": 18000,
+      "final_score": 0.266588,
+      "balanced_score": -0.246552,
+      "feasibility": 0.457378,
+      "stability": 0.477344,
+      "risk": 0.538665
+    },
+    {
+      "rank": 3,
+      "family": "batch",
+      "template": "batch_route",
+      "n": 20000,
+      "final_score": 0.262502,
+      "balanced_score": -0.167244,
+      "feasibility": 0.448894,
+      "stability": 0.483613,
+      "risk": 0.530093
+    },
+    {
+      "rank": 4,
+      "family": "batch",
+      "template": "batch_route",
+      "n": 18000,
+      "final_score": 0.261348,
+      "balanced_score": -0.249252,
+      "feasibility": 0.448946,
+      "stability": 0.48366,
+      "risk": 0.530013
+    },
+    {
+      "rank": 5,
+      "family": "batch",
+      "template": "batch_route",
+      "n": 20000,
+      "final_score": 0.254869,
+      "balanced_score": -0.166804,
+      "feasibility": 0.436338,
+      "stability": 0.49328,
+      "risk": 0.516877
+    },
+    {
+      "rank": 6,
+      "family": "batch",
+      "template": "batch_route",
+      "n": 18000,
+      "final_score": 0.253863,
+      "balanced_score": -0.232983,
+      "feasibility": 0.436309,
+      "stability": 0.493246,
+      "risk": 0.516928
+    },
+    {
+      "rank": 7,
+      "family": "batch",
+      "template": "batch_route",
+      "n": 20000,
+      "final_score": 0.242578,
+      "balanced_score": -0.182564,
+      "feasibility": 0.416393,
+      "stability": 0.443433,
+      "risk": 0.562826
+    },
+    {
+      "rank": 8,
+      "family": "batch",
+      "template": "batch_route",
+      "n": 20000,
+      "final_score": 0.237559,
+      "balanced_score": -0.183495,
+      "feasibility": 0.407941,
+      "stability": 0.449761,
+      "risk": 0.554178
+    },
+    {
+      "rank": 9,
+      "family": "batch",
+      "template": "batch_route",
+      "n": 20000,
+      "final_score": 0.230385,
+      "balanced_score": -0.181411,
+      "feasibility": 0.395487,
+      "stability": 0.459583,
+      "risk": 0.540749
+    },
+    {
+      "rank": 10,
+      "family": "batch",
+      "template": "batch_route",
+      "n": 18000,
+      "final_score": 0.229376,
+      "balanced_score": -0.247774,
+      "feasibility": 0.395458,
+      "stability": 0.459549,
+      "risk": 0.540801
+    },
+    {
+      "rank": 11,
+      "family": "ascetic",
+      "template": "ascetic_route",
+      "n": 22000,
+      "final_score": 0.211965,
+      "balanced_score": -0.233208,
+      "feasibility": 0.378752,
+      "stability": 0.553374,
+      "risk": 0.433659
+    },
+    {
+      "rank": 12,
+      "family": "ascetic",
+      "template": "ascetic_route",
+      "n": 18000,
+      "final_score": 0.203709,
+      "balanced_score": -0.241947,
+      "feasibility": 0.37319,
+      "stability": 0.555889,
+      "risk": 0.43023
+    }
+  ],
+  "hydro": {
+    "pressure_balance": 1.5,
+    "top_margin": 0.0,
+    "score_spread": 0.0,
+    "mean_score": 0.0,
+    "pruned_count": 0,
+    "reflow_bonus": 0.5764705882352931,
+    "alive_count": 166,
+    "vein_pareto_size": 6,
+    "utm_hydro_state": "FLOOD",
+    "utm_state": "NORMAL",
+    "utm_main_channel_k": 3,
+    "mean_risk": 0.5194681465129057,
+    "active_ratio": 1.0,
+    "mean_instability": 0.0,
+    "wither_ratio": 0.0,
+    "mean_balanced_score": -0.20815889182737723,
+    "restricted_ratio": 0.0
+  },
+  "oracle_summary": {
+    "seed_title": "Distrike Open Source Strategy Selection",
+    "background_emerged": true,
+    "inferred_goal": "phase_boundary_managed_transition",
+    "dominant_pressures": [
+      "social_pressure_dominant",
+      "field_noise_elevated",
+      "phase_instability_moderate"
+    ]
+  }
+}

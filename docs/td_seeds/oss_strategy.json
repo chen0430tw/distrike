@@ -1,0 +1,35 @@
+{
+  "title": "Distrike Open Source Strategy Selection",
+  "target": "Determine the optimal open-source licensing strategy for Distrike that maximizes adoption while maintaining competitive moat and sustainable development",
+  "constraints": [
+    "individual developer, not a company with legal team",
+    "must attract users to build initial adoption",
+    "must protect core competitive advantage (MFT engine, rule database, Agent API)",
+    "must be compatible with existing Go open-source ecosystem",
+    "must not create unsustainable maintenance burden (dual codebase)",
+    "competitors gdu/dust are fully open-source MIT/Apache"
+  ],
+  "resources": {
+    "budget": 0.30,
+    "infrastructure": 0.55,
+    "data_coverage": 0.45,
+    "population_coupling": 0.40
+  },
+  "environment": {
+    "field_noise": 0.65,
+    "social_pressure": 0.72,
+    "regulatory_friction": 0.25,
+    "network_density": 0.58,
+    "phase_instability": 0.55
+  },
+  "subject": {
+    "output_power": 0.78,
+    "control_precision": 0.60,
+    "load_tolerance": 0.45,
+    "aim_coupling": 0.85,
+    "stress_level": 0.50,
+    "phase_proximity": 0.62,
+    "marginal_decay": 0.35,
+    "instability_sensitivity": 0.48
+  }
+}

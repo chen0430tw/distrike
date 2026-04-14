@@ -1,0 +1,167 @@
+{
+  "profile": "default",
+  "elapsed_s": 869.891,
+  "top_results": [
+    {
+      "rank": 1,
+      "family": "batch",
+      "template": "batch_route",
+      "n": 20000,
+      "final_score": 0.377064,
+      "balanced_score": 0.04535,
+      "feasibility": 0.5574,
+      "stability": 0.585,
+      "risk": 0.36
+    },
+    {
+      "rank": 2,
+      "family": "batch",
+      "template": "batch_route",
+      "n": 22000,
+      "final_score": 0.372388,
+      "balanced_score": -0.056789,
+      "feasibility": 0.5574,
+      "stability": 0.585,
+      "risk": 0.36
+    },
+    {
+      "rank": 3,
+      "family": "batch",
+      "template": "batch_route",
+      "n": 18000,
+      "final_score": 0.37223,
+      "balanced_score": -0.067591,
+      "feasibility": 0.5574,
+      "stability": 0.585,
+      "risk": 0.36
+    },
+    {
+      "rank": 4,
+      "family": "batch",
+      "template": "batch_route",
+      "n": 20000,
+      "final_score": 0.361081,
+      "balanced_score": -0.006355,
+      "feasibility": 0.550368,
+      "stability": 0.561442,
+      "risk": 0.395338
+    },
+    {
+      "rank": 5,
+      "family": "batch",
+      "template": "batch_route",
+      "n": 20000,
+      "final_score": 0.359689,
+      "balanced_score": 0.0339,
+      "feasibility": 0.5385,
+      "stability": 0.585,
+      "risk": 0.36
+    },
+    {
+      "rank": 6,
+      "family": "batch",
+      "template": "batch_route",
+      "n": 22000,
+      "final_score": 0.355759,
+      "balanced_score": -0.07207,
+      "feasibility": 0.5385,
+      "stability": 0.585,
+      "risk": 0.36
+    },
+    {
+      "rank": 7,
+      "family": "batch",
+      "template": "batch_route",
+      "n": 20000,
+      "final_score": 0.355129,
+      "balanced_score": 0.044032,
+      "feasibility": 0.5174,
+      "stability": 0.555,
+      "risk": 0.38
+    },
+    {
+      "rank": 8,
+      "family": "batch",
+      "template": "batch_route",
+      "n": 22000,
+      "final_score": 0.350545,
+      "balanced_score": -0.05812,
+      "feasibility": 0.5174,
+      "stability": 0.555,
+      "risk": 0.38
+    },
+    {
+      "rank": 9,
+      "family": "batch",
+      "template": "batch_route",
+      "n": 18000,
+      "final_score": 0.350385,
+      "balanced_score": -0.068963,
+      "feasibility": 0.5174,
+      "stability": 0.555,
+      "risk": 0.38
+    },
+    {
+      "rank": 10,
+      "family": "batch",
+      "template": "batch_route",
+      "n": 20000,
+      "final_score": 0.338044,
+      "balanced_score": 0.032537,
+      "feasibility": 0.4985,
+      "stability": 0.555,
+      "risk": 0.38
+    },
+    {
+      "rank": 11,
+      "family": "batch",
+      "template": "batch_route",
+      "n": 22000,
+      "final_score": 0.334209,
+      "balanced_score": -0.073422,
+      "feasibility": 0.4985,
+      "stability": 0.555,
+      "risk": 0.38
+    },
+    {
+      "rank": 12,
+      "family": "batch",
+      "template": "batch_route",
+      "n": 20000,
+      "final_score": 0.326743,
+      "balanced_score": -0.031463,
+      "feasibility": 0.500162,
+      "stability": 0.519194,
+      "risk": 0.433708
+    }
+  ],
+  "hydro": {
+    "pressure_balance": 1.5,
+    "top_margin": 0.0,
+    "score_spread": 0.0,
+    "mean_score": 0.0,
+    "pruned_count": 0,
+    "reflow_bonus": 0.9555555555555542,
+    "alive_count": 166,
+    "vein_pareto_size": 2,
+    "utm_hydro_state": "FLOOD",
+    "utm_state": "NORMAL",
+    "utm_main_channel_k": 3,
+    "restricted_ratio": 0.0,
+    "mean_risk": 0.377420505862683,
+    "mean_instability": 0.0,
+    "wither_ratio": 0.0,
+    "mean_balanced_score": -0.02324617136999627,
+    "active_ratio": 1.0
+  },
+  "oracle_summary": {
+    "seed_title": "Distrike Open Source Strategy Selection",
+    "background_emerged": true,
+    "inferred_goal": "phase_boundary_managed_transition",
+    "dominant_pressures": [
+      "social_pressure_dominant",
+      "field_noise_elevated",
+      "phase_instability_moderate"
+    ]
+  }
+}
