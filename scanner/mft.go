@@ -129,12 +129,15 @@ func (e *MFTEngine) Scan(path string, opts ScanOptions) (*ScanResult, error) {
 		defer close(recordCh)
 		batchBuf := make([]byte, recordSize*batchSize)
 		var parsed int64
+		var totalRead int64
+		milestones := map[int]bool{25: false, 50: false, 75: false}
 		for batchStart := int64(0); ; batchStart += batchSize {
 			// One large I/O: read 1MB at once
 			n, err := mftReader.ReadAt(batchBuf, batchStart*recordSize)
 			if n == 0 {
 				break
 			}
+			totalRead += int64(n) / recordSize
 			// Process records within this batch
 			recordsInBatch := int64(n) / recordSize
 			for i := int64(0); i < recordsInBatch; i++ {
@@ -150,14 +153,21 @@ func (e *MFTEngine) Scan(path string, opts ScanOptions) (*ScanResult, error) {
 				recordCh <- rawRecord{id: batchStart + i, data: record}
 				parsed++
 			}
-			if parsed%100000 < batchSize {
-				fmt.Fprintf(os.Stderr, "\r  MFT: %dk records read...", parsed/1000)
+			// Milestone progress: print at 25%, 50%, 75%
+			if estEntries > 0 {
+				pct := int(totalRead * 100 / estEntries)
+				for _, m := range []int{25, 50, 75} {
+					if pct >= m && !milestones[m] {
+						fmt.Fprintf(os.Stderr, "  MFT: %d%% (%dk records read)\n", m, parsed/1000)
+						milestones[m] = true
+					}
+				}
 			}
 			if err == io.EOF {
 				break
 			}
 		}
-		fmt.Fprintf(os.Stderr, "\r  MFT: %dk records read, building tree...\n", parsed/1000)
+		fmt.Fprintf(os.Stderr, "  MFT: 100%% (%dk records read)\n", parsed/1000)
 	}()
 
 	// Track entries that need external $DATA resolution
@@ -208,7 +218,7 @@ func (e *MFTEngine) Scan(path string, opts ScanOptions) (*ScanResult, error) {
 	}
 
 	wg.Wait()
-	fmt.Fprintf(os.Stderr, "  Phase 1 (read+parse): %v, %d nodes\n", time.Since(t1), len(nodes))
+	_ = t1 // timing folded into final ScanResult.DurationMs
 
 	// Phase 1.5: Resolve external $DATA references using ring buffer.
 	// Sort pending refs by external entry number so we read MFT sequentially,
@@ -359,18 +369,14 @@ func (e *MFTEngine) Scan(path string, opts ScanOptions) (*ScanResult, error) {
 	}
 
 	// Phase 2: Build parent-child links
-	t2 := time.Now()
 	for entryNum, node := range nodes {
 		if parent, ok := nodes[node.parentRef]; ok && entryNum != 5 {
 			parent.children = append(parent.children, entryNum)
 		}
 	}
-	fmt.Fprintf(os.Stderr, "  Phase 2 (tree links): %v, %d nodes\n", time.Since(t2), len(nodes))
 
 	// Phase 3: Compute cumulative sizes (bottom-up)
-	t3 := time.Now()
 	computeCumulativeSizes(nodes)
-	fmt.Fprintf(os.Stderr, "  Phase 3 (cumulative sizes): %v\n", time.Since(t3))
 
 	// Phase 4: Build results
 	rootEntry := uint64(5) // NTFS root directory

@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"distrike/cleaner"
@@ -12,6 +13,7 @@ import (
 	"distrike/killline"
 	"distrike/output"
 	"distrike/scanner"
+	"distrike/vdisk"
 
 	"github.com/spf13/cobra"
 )
@@ -154,6 +156,53 @@ func runClean(cmd *cobra.Command, args []string) error {
 	}
 
 	for _, p := range prey {
+		// Handle vdisk prey with compaction instead of command execution
+		if p.Kind == hunter.KindVDisk {
+			ext := strings.ToLower(filepath.Ext(p.Path))
+			var before, after int64
+			var compactErr error
+
+			switch ext {
+			case ".vhdx":
+				fmt.Fprintf(cmd.ErrOrStderr(), "Compacting VHDX %s...\n", p.Path)
+				before, after, compactErr = vdisk.CompactVHDX(p.Path)
+			case ".vmdk":
+				fmt.Fprintf(cmd.ErrOrStderr(), "Compacting VMDK %s...\n", p.Path)
+				before, after, compactErr = vdisk.CompactVMDK(p.Path)
+			case ".vdi":
+				fmt.Fprintf(cmd.ErrOrStderr(), "Compacting VDI %s...\n", p.Path)
+				before, after, compactErr = vdisk.CompactVDI(p.Path)
+			default:
+				fmt.Fprintf(cmd.ErrOrStderr(), "Skipping %s (unsupported vdisk format: %s)\n", p.Path, ext)
+				continue
+			}
+
+			if compactErr != nil {
+				errMsg := compactErr.Error()
+				cleanOut.Data.Errors = append(cleanOut.Data.Errors, fmt.Sprintf("%s: %s", p.Path, errMsg))
+				_ = cleaner.RecordHistory(p, 0, false, errMsg)
+			} else {
+				freed := before - after
+				if freed < 0 {
+					freed = 0
+				}
+				fmt.Fprintf(cmd.ErrOrStderr(), "  %s -> %s (freed %s)\n", units.FormatSize(before), units.FormatSize(after), units.FormatSize(freed))
+				item := output.CleanedItem{
+					Path:       p.Path,
+					SizeBytes:  p.SizeBytes,
+					SizeHuman:  units.FormatSize(p.SizeBytes),
+					Kind:       string(p.Kind),
+					Risk:       string(p.Risk),
+					Command:    "vdisk compact",
+					FreedBytes: freed,
+				}
+				cleanOut.Data.FreedBytes += freed
+				cleanOut.Data.Cleaned = append(cleanOut.Data.Cleaned, item)
+				_ = cleaner.RecordHistory(p, freed, true, "")
+			}
+			continue
+		}
+
 		if p.Action.Type != "command" {
 			fmt.Fprintf(cmd.ErrOrStderr(), "Skipping %s (manual action: %s)\n", p.Path, p.Action.Hint)
 			continue

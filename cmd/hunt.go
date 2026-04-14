@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"distrike/config"
 	"distrike/hunter"
@@ -15,8 +16,10 @@ import (
 )
 
 var (
-	huntRisk string
-	huntAll  bool
+	huntRisk   string
+	huntAll    bool
+	huntAfter  string
+	huntBefore string
 )
 
 var huntCmd = &cobra.Command{
@@ -29,6 +32,8 @@ var huntCmd = &cobra.Command{
 func init() {
 	huntCmd.Flags().StringVar(&huntRisk, "risk", "all", "filter by risk level: all/safe/caution/danger")
 	huntCmd.Flags().BoolVar(&huntAll, "all", false, "hunt all drives/mount points")
+	huntCmd.Flags().StringVar(&huntAfter, "after", "", "only show entries modified after (td/yd/3d/7d/tw/lw/tm/@timestamp/YYYY-MM-DD)")
+	huntCmd.Flags().StringVar(&huntBefore, "before", "", "only show entries modified before")
 	rootCmd.AddCommand(huntCmd)
 }
 
@@ -53,6 +58,23 @@ func runHunt(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Parse time filters
+	var afterTime, beforeTime time.Time
+	if huntAfter != "" {
+		t, err := units.ParseDateShortcut(huntAfter)
+		if err != nil {
+			return fmt.Errorf("parsing --after %q: %w", huntAfter, err)
+		}
+		afterTime = t
+	}
+	if huntBefore != "" {
+		t, err := units.ParseDateShortcut(huntBefore)
+		if err != nil {
+			return fmt.Errorf("parsing --before %q: %w", huntBefore, err)
+		}
+		beforeTime = t
+	}
+
 	minScanSize, _ := units.ParseSize(cfg.Scan.MinSize)
 	// Hunt needs deeper scan than normal scan — caches live at depth 5-6+
 	// e.g., C:\Users\asus\AppData\Local\pip\cache (depth 6)
@@ -69,6 +91,8 @@ func runHunt(cmd *cobra.Command, args []string) error {
 		Workers:        cfg.Scan.Workers,
 		Exclude:        cfg.Scan.Exclude,
 		CollectAll:     true, // collect all dirs, not just top-level
+		AfterTime:      afterTime,
+		BeforeTime:     beforeTime,
 	}
 
 	// Collect all entries from scans

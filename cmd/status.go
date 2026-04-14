@@ -5,9 +5,11 @@ import (
 	"os"
 
 	"distrike/config"
+	"distrike/health"
 	"distrike/internal/units"
 	"distrike/killline"
 	"distrike/output"
+	"distrike/security"
 	"distrike/signal"
 
 	"github.com/spf13/cobra"
@@ -72,6 +74,43 @@ func runStatus(cmd *cobra.Command, args []string) error {
 
 	result := output.RenderStatus(statusData, jsonOutput)
 	fmt.Println(result)
+
+	// Health checks
+	if cfg.Health.Enabled {
+		opts := health.HealthOptions{
+			SMARTEnabled:      cfg.Health.SMART.Enabled,
+			CapacityAnomaly:   cfg.Health.CapacityAnomaly.Enabled,
+			RemovableOnly:     cfg.Health.CapacityAnomaly.RemovableOnly,
+			BadSectorWarn:     cfg.Health.BadSectors.WarnThreshold,
+			BadSectorCritical: cfg.Health.BadSectors.CritThreshold,
+			WearLevelWarn:     cfg.Health.WearLevel.WarnPct,
+			WearLevelCritical: cfg.Health.WearLevel.CritPct,
+		}
+		devices, err := health.Check(opts)
+		if err != nil {
+			fmt.Fprintf(cmd.ErrOrStderr(), "Health check error: %v\n", err)
+		} else {
+			for _, dev := range devices {
+				for _, alert := range dev.Alerts {
+					fmt.Fprintf(cmd.ErrOrStderr(), "[HEALTH %s] %s: %s\n", alert.Level, dev.Device, alert.Message)
+				}
+			}
+		}
+	}
+
+	// Encryption detection
+	if cfg.Security.Encryption.Detect {
+		states, err := security.DetectEncryption()
+		if err != nil {
+			fmt.Fprintf(cmd.ErrOrStderr(), "Encryption detection error: %v\n", err)
+		} else {
+			for _, es := range states {
+				if es.Method != "none" && es.Method != "unknown" {
+					fmt.Fprintf(cmd.ErrOrStderr(), "[ENCRYPTION] %s: %s (%s)\n", es.Drive, es.Method, es.State)
+				}
+			}
+		}
+	}
 
 	if hasWarning {
 		os.Exit(1)
