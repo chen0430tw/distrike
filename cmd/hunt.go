@@ -54,11 +54,12 @@ func runHunt(cmd *cobra.Command, args []string) error {
 	}
 
 	minScanSize, _ := units.ParseSize(cfg.Scan.MinSize)
-	// Hunt needs deeper scan than normal scan — caches live at depth 5-6
-	// e.g., C:\Users\asus\AppData\Local\pip\cache
+	// Hunt needs deeper scan than normal scan — caches live at depth 5-6+
+	// e.g., C:\Users\asus\AppData\Local\pip\cache (depth 6)
+	// e.g., D:\LDPlayer\LDPlayer9\vms\leidian0\data.vmdk (depth 4)
 	huntDepth := cfg.Scan.MaxDepth
-	if huntDepth < 7 {
-		huntDepth = 7
+	if huntDepth < 10 {
+		huntDepth = 10
 	}
 	scanOpts := scanner.ScanOptions{
 		MaxDepth:       huntDepth,
