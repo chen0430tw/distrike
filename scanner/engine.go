@@ -1,5 +1,7 @@
 package scanner
 
+import "time"
+
 // Engine defines the interface for disk scanning backends.
 type Engine interface {
 	// Scan traverses the given path and returns directory entries.
@@ -17,7 +19,9 @@ type ScanOptions struct {
 	FollowSymlinks bool
 	Workers        int
 	Exclude        []string
-	CollectAll     bool // When true, collect all directories (not just top-level). Used by hunt.
+	CollectAll     bool      // When true, collect all directories (not just top-level). Used by hunt.
+	AfterTime      time.Time // Only count files modified after this time (zero = no filter).
+	BeforeTime     time.Time // Only count files modified before this time (zero = no filter).
 }
 
 // ScanResult holds the output of a scan operation.

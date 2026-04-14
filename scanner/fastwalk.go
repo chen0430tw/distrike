@@ -126,6 +126,17 @@ func (e *FastwalkEngine) Scan(path string, opts ScanOptions) (*ScanResult, error
 				fileSize = info.Size()
 			}
 			modTime = info.ModTime()
+
+			// Time filter: only count files within the time window.
+			// Directories always pass (their cumulative size comes from their files).
+			if !d.IsDir() && fileSize > 0 {
+				if !opts.AfterTime.IsZero() && modTime.Before(opts.AfterTime) {
+					fileSize = 0 // exclude from size accumulation
+				}
+				if !opts.BeforeTime.IsZero() && modTime.After(opts.BeforeTime) {
+					fileSize = 0
+				}
+			}
 		}
 
 		// CollectAll: record directories + virtual disk files for hunt rule matching

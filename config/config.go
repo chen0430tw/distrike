@@ -983,6 +983,12 @@ func DefaultConfig() *Config {
 			ConcentrationTopN: 10,
 		},
 		Health: HealthConfig{Enabled: true},
+		Whitelist: []string{
+			// IM apps with large persistent databases — users expect these to be large
+			"*/Tencent Files",   // QQ message history (can be 100GB+)
+			"*/WeChat Files",    // WeChat data
+			"*/Tencent/WeChat",  // WeChat alternative path
+		},
 		Scan: ScanConfig{
 			MaxDepth: 3, MinSize: "100MB", Top: 20,
 			Engine: "auto", StorageMode: "auto",

@@ -94,6 +94,8 @@ func runScan(cmd *cobra.Command, args []string) error {
 		FollowSymlinks: cfg.Scan.FollowSymlinks,
 		Workers:        cfg.Scan.Workers,
 		Exclude:        cfg.Scan.Exclude,
+		AfterTime:      afterTime,
+		BeforeTime:     beforeTime,
 	}
 
 	// Set up cache if enabled

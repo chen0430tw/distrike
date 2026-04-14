@@ -158,6 +158,21 @@ func platformSpecificRules() []Rule {
 			Description: "Telegram cache",
 			Action:      Action{Type: "manual", Hint: "Clear in Telegram settings > Data and Storage"}},
 
+		// --- Clipboard / utility ---
+		{Pattern: "*/Ditto/Ditto.db", Kind: KindCache, Risk: RiskCaution, Platform: "windows",
+			Description: "Ditto clipboard history database",
+			Action:      Action{Type: "manual", Hint: "Purge old entries in Ditto settings or delete Ditto.db"}},
+
+		// --- Claude Code old versions ---
+		{Pattern: "*/.local/share/claude/versions", Kind: KindCache, Risk: RiskSafe, Platform: "windows",
+			Description: "Claude Code old version binaries",
+			Action:      Action{Type: "manual", Hint: "Keep latest version, delete older ones"}},
+
+		// --- WebEx ---
+		{Pattern: "*/WebEx", Kind: KindCache, Risk: RiskCaution, Platform: "windows",
+			Description: "WebEx meeting cache and temp files",
+			Action:      Action{Type: "manual", Hint: "Delete if not actively using WebEx"}},
+
 		// --- Windows system cleanable ---
 		{Pattern: "*/Windows/Prefetch", Kind: KindCache, Risk: RiskSafe, Platform: "windows",
 			Description: "Windows Prefetch (app launch optimization cache)",
