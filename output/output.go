@@ -135,19 +135,44 @@ func platform() string {
 	return runtime.GOOS
 }
 
-// signalLabel returns a text label for a signal light.
+// ANSI color codes
+const (
+	colorReset  = "\033[0m"
+	colorGreen  = "\033[32m"
+	colorYellow = "\033[33m"
+	colorRed    = "\033[31m"
+	colorPurple = "\033[35m"
+)
+
+// signalLabel returns a colored text label for a signal light.
 func signalLabel(l signal.Light) string {
 	switch l {
 	case signal.Purple:
-		return "CRITICAL"
+		return colorPurple + "CRITICAL" + colorReset
 	case signal.Red:
-		return "DANGER"
+		return colorRed + "DANGER" + colorReset
 	case signal.Yellow:
-		return "WARNING"
+		return colorYellow + "WARNING" + colorReset
 	case signal.Green:
-		return "OK"
+		return colorGreen + "OK" + colorReset
 	default:
 		return "UNKNOWN"
+	}
+}
+
+// signalColor returns the ANSI color for a signal light.
+func signalColor(l signal.Light) string {
+	switch l {
+	case signal.Purple:
+		return colorPurple
+	case signal.Red:
+		return colorRed
+	case signal.Yellow:
+		return colorYellow
+	case signal.Green:
+		return colorGreen
+	default:
+		return ""
 	}
 }
 
@@ -187,9 +212,11 @@ func RenderStatus(data StatusOutput, asJSON bool) string {
 			usedRatio = float64(d.UsedBytes) / float64(d.TotalBytes)
 		}
 		bar := progressBar(usedRatio, 20)
+		// Color the progress bar based on signal light
+		coloredBar := signalColor(d.Signal.Light) + bar + colorReset
 		label := signalLabel(d.Signal.Light)
 		sb.WriteString(fmt.Sprintf("%-6s %s  %s / %s  %s\n",
-			d.Path, bar,
+			d.Path, coloredBar,
 			units.FormatSize(d.FreeBytes),
 			units.FormatSize(d.TotalBytes),
 			label,
