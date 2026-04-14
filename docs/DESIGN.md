@@ -776,6 +776,26 @@ Pass 1: OPU 批量 I/O + 并行解析
 
 **可见内核文件**：MFT 引擎能看到 `hiberfil.sys`、`pagefile.sys`、`swapfile.sys` 等被内核锁定的文件——因为读的是磁盘扇区而非文件句柄。
 
+### 7.5 引擎对比基准测试
+
+实测环境：454 GB NTFS SSD，2.2M 文件，Windows 10
+
+| 维度 | fastwalk | MFT | 说明 |
+|------|---------|-----|------|
+| **时间（正常负载）** | **14.7s** | **18.3s** | fastwalk 略快 |
+| **时间（高负载）** | 33.2s | 39.0s | 系统卡顿时均受影响 |
+| C:\Users | 238.4 GB | 208.0 GB | fastwalk 含 hardlink 重复计算 |
+| C:\Windows | 40.4 GB | 35.7 GB | WinSxS hardlinks 差异 |
+| C:\Program Files | 55.8 GB | 68.5 GB | MFT 含隐藏/系统文件 |
+| C:\ProgramData | 19.7 GB | 19.7 GB | 完美匹配 |
+| hiberfil.sys | 不可见 | **可见 (9.5 GB)** | MFT 独占优势 |
+| pagefile.sys | 不可见 | **可见 (2.3 GB)** | MFT 独占优势 |
+| 需要 Admin | 否 | 是 | |
+| 跨平台 | 是 | 仅 Windows NTFS | |
+| 大小语义 | 逻辑占用（含 hardlink） | 物理占用（去重） | 两种都正确 |
+
+**选择策略**：`engine=auto` 时，Admin + NTFS 自动用 MFT（能看到更多），否则用 fastwalk（无需权限）。用户也可 `--engine fastwalk` 或 `--engine mft` 强制指定。
+
 ### 7.5 扫描缓存（借鉴 gdu）
 
 使用 `modernc.org/sqlite`（纯 Go SQLite，无 CGO）：
