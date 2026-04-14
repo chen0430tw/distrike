@@ -3,8 +3,11 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"runtime"
+	"strings"
 	"syscall"
 	"time"
 
@@ -17,26 +20,52 @@ import (
 )
 
 var (
-	watchInterval string
-	watchDaemon   bool
-	watchAll      bool
+	watchInterval  string
+	watchDaemon    bool
+	watchAll       bool
+	watchInstall   bool
+	watchUninstall bool
+	watchStatus    bool
 )
 
 var watchCmd = &cobra.Command{
 	Use:   "watch",
 	Short: "Monitor capacity rebound and alert when free space approaches kill-line",
-	Long:  `Continuously poll drive free space at a given interval and emit alerts when free space drops near or below the kill-line threshold.`,
-	RunE:  runWatch,
+	Long: `Continuously poll drive free space at a given interval and emit alerts
+when free space drops near or below the kill-line threshold.
+
+Adaptive intervals: polls faster when drives are in danger, relaxes when safe.
+
+Use --install to register as a Windows scheduled task (runs at login).
+Use --uninstall to remove the scheduled task.
+Use --status to check if the background task is running.`,
+	RunE: runWatch,
 }
 
+const taskName = "DistrikeWatch"
+
 func init() {
-	watchCmd.Flags().StringVar(&watchInterval, "interval", "5s", "polling interval (e.g. 5s, 1m, 30s)")
-	watchCmd.Flags().BoolVar(&watchDaemon, "daemon", false, "daemon mode: GC every 100 iterations, hourly memory stats")
-	watchCmd.Flags().BoolVar(&watchAll, "all", false, "watch all drives (default: only drives with signals)")
+	watchCmd.Flags().StringVar(&watchInterval, "interval", "5s", "override purple interval (e.g. 5s, 1m)")
+	watchCmd.Flags().BoolVar(&watchDaemon, "daemon", false, "daemon mode: GC + memory management")
+	watchCmd.Flags().BoolVar(&watchAll, "all", false, "watch all drives (default: only alerting drives)")
+	watchCmd.Flags().BoolVar(&watchInstall, "install", false, "register as Windows scheduled task (runs at login)")
+	watchCmd.Flags().BoolVar(&watchUninstall, "uninstall", false, "remove the scheduled task")
+	watchCmd.Flags().BoolVar(&watchStatus, "status", false, "check if watch is running")
 	rootCmd.AddCommand(watchCmd)
 }
 
 func runWatch(cmd *cobra.Command, args []string) error {
+	// Handle --install / --uninstall / --status before anything else
+	if watchInstall {
+		return installWatchTask(cmd)
+	}
+	if watchUninstall {
+		return uninstallWatchTask(cmd)
+	}
+	if watchStatus {
+		return showWatchStatus(cmd)
+	}
+
 	cfg, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
@@ -190,4 +219,161 @@ func runWatch(cmd *cobra.Command, args []string) error {
 			}
 		}
 	}
+}
+
+// installWatchTask registers distrike watch as a background service.
+// Windows: schtasks (scheduled task at logon)
+// macOS: launchd plist
+// Linux: systemd user service
+func installWatchTask(cmd *cobra.Command) error {
+	exePath, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("finding executable path: %w", err)
+	}
+	exePath, _ = filepath.Abs(exePath)
+
+	switch runtime.GOOS {
+	case "windows":
+		// schtasks /Create /TN DistrikeWatch /TR "path\distrike.exe watch --daemon --all" /SC ONLOGON /RL HIGHEST
+		taskCmd := fmt.Sprintf(`"%s" watch --daemon --all`, exePath)
+		out, err := exec.Command("schtasks", "/Create",
+			"/TN", taskName,
+			"/TR", taskCmd,
+			"/SC", "ONLOGON",
+			"/RL", "HIGHEST",
+			"/F", // force overwrite if exists
+		).CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("schtasks create: %s\n%w", string(out), err)
+		}
+		fmt.Fprintf(cmd.ErrOrStderr(), "Installed scheduled task '%s'\n", taskName)
+		fmt.Fprintf(cmd.ErrOrStderr(), "  Command: %s\n", taskCmd)
+		fmt.Fprintf(cmd.ErrOrStderr(), "  Trigger: at logon\n")
+		fmt.Fprintf(cmd.ErrOrStderr(), "  To start now: schtasks /Run /TN %s\n", taskName)
+
+	case "darwin":
+		plistName := "com.distrike.watch"
+		plistPath := filepath.Join(os.Getenv("HOME"), "Library", "LaunchAgents", plistName+".plist")
+		plist := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>%s</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>%s</string>
+        <string>watch</string>
+        <string>--daemon</string>
+        <string>--all</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardErrorPath</key>
+    <string>/tmp/distrike-watch.log</string>
+</dict>
+</plist>`, plistName, exePath)
+		if err := os.WriteFile(plistPath, []byte(plist), 0644); err != nil {
+			return fmt.Errorf("writing plist: %w", err)
+		}
+		exec.Command("launchctl", "load", plistPath).Run()
+		fmt.Fprintf(cmd.ErrOrStderr(), "Installed launchd agent '%s'\n", plistName)
+		fmt.Fprintf(cmd.ErrOrStderr(), "  Plist: %s\n", plistPath)
+		fmt.Fprintf(cmd.ErrOrStderr(), "  Log: /tmp/distrike-watch.log\n")
+
+	default: // Linux
+		serviceDir := filepath.Join(os.Getenv("HOME"), ".config", "systemd", "user")
+		os.MkdirAll(serviceDir, 0755)
+		servicePath := filepath.Join(serviceDir, "distrike-watch.service")
+		service := fmt.Sprintf(`[Unit]
+Description=Distrike capacity rebound monitor
+
+[Service]
+ExecStart=%s watch --daemon --all
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target
+`, exePath)
+		if err := os.WriteFile(servicePath, []byte(service), 0644); err != nil {
+			return fmt.Errorf("writing service file: %w", err)
+		}
+		exec.Command("systemctl", "--user", "daemon-reload").Run()
+		exec.Command("systemctl", "--user", "enable", "distrike-watch").Run()
+		exec.Command("systemctl", "--user", "start", "distrike-watch").Run()
+		fmt.Fprintf(cmd.ErrOrStderr(), "Installed systemd user service 'distrike-watch'\n")
+		fmt.Fprintf(cmd.ErrOrStderr(), "  Service: %s\n", servicePath)
+		fmt.Fprintf(cmd.ErrOrStderr(), "  Status: systemctl --user status distrike-watch\n")
+	}
+	return nil
+}
+
+// uninstallWatchTask removes the background service.
+func uninstallWatchTask(cmd *cobra.Command) error {
+	switch runtime.GOOS {
+	case "windows":
+		out, err := exec.Command("schtasks", "/Delete", "/TN", taskName, "/F").CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("schtasks delete: %s\n%w", string(out), err)
+		}
+		fmt.Fprintf(cmd.ErrOrStderr(), "Removed scheduled task '%s'\n", taskName)
+
+	case "darwin":
+		plistName := "com.distrike.watch"
+		plistPath := filepath.Join(os.Getenv("HOME"), "Library", "LaunchAgents", plistName+".plist")
+		exec.Command("launchctl", "unload", plistPath).Run()
+		os.Remove(plistPath)
+		fmt.Fprintf(cmd.ErrOrStderr(), "Removed launchd agent '%s'\n", plistName)
+
+	default:
+		exec.Command("systemctl", "--user", "stop", "distrike-watch").Run()
+		exec.Command("systemctl", "--user", "disable", "distrike-watch").Run()
+		servicePath := filepath.Join(os.Getenv("HOME"), ".config", "systemd", "user", "distrike-watch.service")
+		os.Remove(servicePath)
+		exec.Command("systemctl", "--user", "daemon-reload").Run()
+		fmt.Fprintf(cmd.ErrOrStderr(), "Removed systemd user service 'distrike-watch'\n")
+	}
+	return nil
+}
+
+// showWatchStatus checks if the background watch task is running.
+func showWatchStatus(cmd *cobra.Command) error {
+	switch runtime.GOOS {
+	case "windows":
+		out, err := exec.Command("schtasks", "/Query", "/TN", taskName, "/FO", "LIST").CombinedOutput()
+		if err != nil {
+			fmt.Fprintf(cmd.ErrOrStderr(), "Watch task not installed\n")
+			return nil
+		}
+		// Check if running
+		if strings.Contains(string(out), "Running") {
+			fmt.Fprintf(cmd.ErrOrStderr(), "Watch: RUNNING\n")
+		} else {
+			fmt.Fprintf(cmd.ErrOrStderr(), "Watch: INSTALLED (not currently running)\n")
+		}
+		fmt.Fprintf(cmd.OutOrStdout(), "%s", string(out))
+
+	case "darwin":
+		out, _ := exec.Command("launchctl", "list", "com.distrike.watch").CombinedOutput()
+		if strings.Contains(string(out), "distrike") {
+			fmt.Fprintf(cmd.ErrOrStderr(), "Watch: RUNNING\n")
+		} else {
+			fmt.Fprintf(cmd.ErrOrStderr(), "Watch: NOT RUNNING\n")
+		}
+
+	default:
+		out, _ := exec.Command("systemctl", "--user", "is-active", "distrike-watch").CombinedOutput()
+		status := strings.TrimSpace(string(out))
+		if status == "active" {
+			fmt.Fprintf(cmd.ErrOrStderr(), "Watch: RUNNING\n")
+		} else {
+			fmt.Fprintf(cmd.ErrOrStderr(), "Watch: %s\n", strings.ToUpper(status))
+		}
+		detail, _ := exec.Command("systemctl", "--user", "status", "distrike-watch").CombinedOutput()
+		fmt.Fprintf(cmd.OutOrStdout(), "%s", string(detail))
+	}
+	return nil
 }
