@@ -47,9 +47,49 @@ func runWatch(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("parsing kill_line %q: %w", cfg.KillLine, err)
 	}
 
-	interval, err := units.ParseDuration(watchInterval)
-	if err != nil {
-		return fmt.Errorf("parsing --interval %q: %w", watchInterval, err)
+	// Adaptive polling intervals — tighter signal = more frequent checks.
+	// Configurable via config watch.intervals, with sensible defaults.
+	type adaptiveIntervals struct {
+		purple time.Duration // < 1GB: imminent danger
+		red    time.Duration // < kill_line: dangerous
+		yellow time.Duration // < kill_line * 1.5: approaching
+		green  time.Duration // safe: just heartbeat
+	}
+
+	intervals := adaptiveIntervals{
+		purple: 10 * time.Second,
+		red:    30 * time.Second,
+		yellow: 5 * time.Minute,
+		green:  15 * time.Minute,
+	}
+
+	// Override from config if available
+	if cfg.Watch.PurpleInterval != "" {
+		if d, err := units.ParseDuration(cfg.Watch.PurpleInterval); err == nil {
+			intervals.purple = d
+		}
+	}
+	if cfg.Watch.RedInterval != "" {
+		if d, err := units.ParseDuration(cfg.Watch.RedInterval); err == nil {
+			intervals.red = d
+		}
+	}
+	if cfg.Watch.YellowInterval != "" {
+		if d, err := units.ParseDuration(cfg.Watch.YellowInterval); err == nil {
+			intervals.yellow = d
+		}
+	}
+	if cfg.Watch.GreenInterval != "" {
+		if d, err := units.ParseDuration(cfg.Watch.GreenInterval); err == nil {
+			intervals.green = d
+		}
+	}
+
+	// CLI --interval overrides the worst-case (purple) interval
+	if watchInterval != "5s" {
+		if d, err := units.ParseDuration(watchInterval); err == nil {
+			intervals.purple = d
+		}
 	}
 
 	// Graceful shutdown
@@ -58,20 +98,22 @@ func runWatch(cmd *cobra.Command, args []string) error {
 
 	thresholds := dSignal.DefaultThresholds()
 
-	fmt.Fprintf(cmd.ErrOrStderr(), "Watching drives every %s (kill-line: %s)\n", interval, units.FormatSize(killLineBytes))
-
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
+	fmt.Fprintf(cmd.ErrOrStderr(), "Watching drives (kill-line: %s)\n", units.FormatSize(killLineBytes))
+	fmt.Fprintf(cmd.ErrOrStderr(), "  Adaptive intervals: PURPLE=%s RED=%s YELLOW=%s GREEN=%s\n",
+		intervals.purple, intervals.red, intervals.yellow, intervals.green)
 
 	iteration := 0
 	lastMemReport := time.Now()
+	currentInterval := 1 * time.Millisecond // first check immediately
 
 	for {
+		timer := time.NewTimer(currentInterval)
 		select {
 		case <-sigCh:
+			timer.Stop()
 			fmt.Fprintf(cmd.ErrOrStderr(), "\n[%s] Watch stopped by signal\n", time.Now().Format("15:04:05"))
 			return nil
-		case <-ticker.C:
+		case <-timer.C:
 			iteration++
 
 			drives, err := killline.EnumerateDrives()
@@ -79,6 +121,9 @@ func runWatch(cmd *cobra.Command, args []string) error {
 				fmt.Fprintf(cmd.ErrOrStderr(), "[%s] Error enumerating drives: %v\n", time.Now().Format("15:04:05"), err)
 				continue
 			}
+
+			// Determine the worst signal across all drives to set next interval
+			worstLevel := 0 // 0=green, 1=yellow, 2=red, 3=purple
 
 			for _, d := range drives {
 				var usedRatio float64
@@ -88,23 +133,43 @@ func runWatch(cmd *cobra.Command, args []string) error {
 
 				sig := dSignal.Classify(usedRatio, 0, d.FreeBytes, killLineBytes, thresholds)
 
-				// Alert conditions
 				ts := time.Now().Format("15:04:05")
 				yellowLine := int64(float64(killLineBytes) * 1.5)
 
 				if d.FreeBytes < 1<<30 { // < 1GB
 					fmt.Fprintf(cmd.ErrOrStderr(), "[%s] PURPLE %s: %s free (< 1 GB!) signal=%s\n",
 						ts, d.Path, units.FormatSize(d.FreeBytes), sig.Light)
+					if worstLevel < 3 {
+						worstLevel = 3
+					}
 				} else if d.FreeBytes < killLineBytes {
 					fmt.Fprintf(cmd.ErrOrStderr(), "[%s] RED %s: %s free (below kill-line %s) signal=%s\n",
 						ts, d.Path, units.FormatSize(d.FreeBytes), units.FormatSize(killLineBytes), sig.Light)
+					if worstLevel < 2 {
+						worstLevel = 2
+					}
 				} else if d.FreeBytes < yellowLine {
 					fmt.Fprintf(cmd.ErrOrStderr(), "[%s] YELLOW %s: %s free (approaching kill-line) signal=%s\n",
 						ts, d.Path, units.FormatSize(d.FreeBytes), sig.Light)
+					if worstLevel < 1 {
+						worstLevel = 1
+					}
 				} else if watchAll {
 					fmt.Fprintf(cmd.ErrOrStderr(), "[%s] GREEN %s: %s free signal=%s\n",
 						ts, d.Path, units.FormatSize(d.FreeBytes), sig.Light)
 				}
+			}
+
+			// Adapt interval based on worst signal
+			switch worstLevel {
+			case 3:
+				currentInterval = intervals.purple
+			case 2:
+				currentInterval = intervals.red
+			case 1:
+				currentInterval = intervals.yellow
+			default:
+				currentInterval = intervals.green
 			}
 
 			// Daemon mode: GC and memory stats

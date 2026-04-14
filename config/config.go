@@ -29,6 +29,7 @@ type Config struct {
 	Docker   DockerConfig   `yaml:"docker"`
 	WSL      WSLConfig      `yaml:"wsl"`
 	VDisk    VDiskConfig    `yaml:"vdisk"`
+	Watch    WatchConfig    `yaml:"watch"`
 	Output   OutputConfig   `yaml:"output"`
 
 	Whitelist   []string     `yaml:"whitelist"`
@@ -143,6 +144,13 @@ type WSLConfig struct {
 type VDiskConfig struct {
 	Enabled bool   `yaml:"enabled"`
 	MinSize string `yaml:"min_size"`
+}
+
+type WatchConfig struct {
+	PurpleInterval string `yaml:"purple_interval"` // < 1GB (default 10s)
+	RedInterval    string `yaml:"red_interval"`    // < kill_line (default 30s)
+	YellowInterval string `yaml:"yellow_interval"` // < kill_line*1.5 (default 5m)
+	GreenInterval  string `yaml:"green_interval"`  // safe (default 15m)
 }
 
 type OutputConfig struct {
@@ -1002,6 +1010,7 @@ func DefaultConfig() *Config {
 		Clean:  CleanConfig{Confirm: true, VerifyAfterClean: true, History: true, MaxHistory: 100},
 		Docker: DockerConfig{Enabled: true, Executable: "auto", StoppedThreshold: "7d"},
 		WSL:    WSLConfig{Enabled: true, DetectVHDX: true, SparseSuggestThreshold: "10GB", AutoFSTrim: true},
+		Watch:  WatchConfig{PurpleInterval: "10s", RedInterval: "30s", YellowInterval: "5m", GreenInterval: "15m"},
 		VDisk:  VDiskConfig{Enabled: true, MinSize: "1GB"},
 		Output: OutputConfig{Format: "text", Progress: true, Color: "auto", JSONIndent: true, TimeFormat: "iso8601"},
 	}
