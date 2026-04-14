@@ -796,7 +796,38 @@ Pass 1: OPU 批量 I/O + 并行解析
 
 **选择策略**：`engine=auto` 时，Admin + NTFS 自动用 MFT（能看到更多），否则用 fastwalk（无需权限）。用户也可 `--engine fastwalk` 或 `--engine mft` 强制指定。
 
-### 7.5 扫描缓存（借鉴 gdu）
+### 7.6 跨平台验证
+
+**编译测试**：Go 交叉编译，单一代码库产出三平台二进制。
+
+```bash
+# Windows (原生)
+go build -o distrike.exe .       # 12 MB
+
+# Linux (交叉编译)
+GOOS=linux GOARCH=amd64 go build -o distrike_linux .
+
+# macOS (交叉编译)
+GOOS=darwin GOARCH=arm64 go build -o distrike_darwin .
+```
+
+**实测结果（2026-04-15）**：
+
+| 测试 | 平台 | 命令 | 结果 |
+|------|------|------|------|
+| Windows exe → Windows | Win10 | `distrike.exe status` | 4 盘显示，灯号正确 |
+| Windows exe → WSL (interop) | WSL2 | `wsl -- distrike.exe status` | 看到 Windows 盘（通过 WSL interop） |
+| Linux binary → WSL (原生) | WSL2 Ubuntu 22.04 | `./distrike_linux status` | 看到 Linux 挂载点（/、/snap 等） |
+| hunt --after 3d | Win10 | `distrike.exe hunt C: --after 3d` | 21 猎物 5.7 GB（时间过滤生效） |
+| watch 自适应 | Win10 | `distrike.exe watch` | PURPLE 10s / RED 30s / YELLOW 5m / GREEN 15m |
+| watch --install | Win10 | `distrike.exe watch --install` | schtasks 注册成功 |
+
+**平台差异**：
+- Windows：status 显示盘符（C:\、D:\），MFT 引擎可用
+- Linux/WSL：status 显示挂载点（/、/snap），MFT 不可用（非 NTFS），自动降级到 fastwalk
+- macOS：status 显示 APFS 卷，fastwalk 引擎
+
+### 7.7 扫描缓存（借鉴 gdu）
 
 使用 `modernc.org/sqlite`（纯 Go SQLite，无 CGO）：
 
