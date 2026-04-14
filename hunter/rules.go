@@ -48,6 +48,40 @@ func commonCacheRules() []Rule {
 		{Pattern: "*/torch/hub", Kind: KindCache, Risk: RiskCaution, Platform: "all",
 			Description: "PyTorch model cache",
 			Action:      Action{Type: "manual", Hint: "Delete contents of torch/hub/"}},
+
+		// Node.js
+		{Pattern: "*/node_modules", Kind: KindCache, Risk: RiskCaution, Platform: "all",
+			Description: "Node.js dependencies (can be reinstalled with npm/yarn install)",
+			Action:      Action{Type: "manual", Hint: "Delete and run npm install to restore"}},
+		{Pattern: "*/.next/cache", Kind: KindCache, Risk: RiskSafe, Platform: "all",
+			Description: "Next.js build cache",
+			Action:      Action{Type: "manual", Hint: "Delete .next/cache"}},
+
+		// Python
+		{Pattern: "*/.tox", Kind: KindCache, Risk: RiskSafe, Platform: "all",
+			Description: "tox virtualenv cache",
+			Action:      Action{Type: "manual", Hint: "Delete .tox directory"}},
+		{Pattern: "*/.venv", Kind: KindCache, Risk: RiskCaution, Platform: "all",
+			Description: "Python virtual environment",
+			Action:      Action{Type: "manual", Hint: "Delete and recreate with python -m venv .venv"}},
+		// NOTE: */dist is too broad — matches VS Code extensions, Copilot, etc.
+		// Only match dist at project root level, not deep inside installed packages.
+
+		// .NET
+		{Pattern: "*/.nuget/packages", Kind: KindCache, Risk: RiskSafe, Platform: "all",
+			Description: "NuGet package cache",
+			Action:      Action{Type: "command", Command: "dotnet nuget locals all --clear"}},
+		{Pattern: "*/bin/Debug", Kind: KindCache, Risk: RiskSafe, Platform: "all",
+			Description: ".NET debug build output",
+			Action:      Action{Type: "manual", Hint: "Delete bin/Debug, rebuild when needed"}},
+		{Pattern: "*/bin/Release", Kind: KindCache, Risk: RiskCaution, Platform: "all",
+			Description: ".NET release build output",
+			Action:      Action{Type: "manual", Hint: "Delete bin/Release if not deployed"}},
+
+		// Maven
+		{Pattern: "*/.m2/repository", Kind: KindCache, Risk: RiskSafe, Platform: "all",
+			Description: "Maven local repository cache",
+			Action:      Action{Type: "manual", Hint: "Delete and Maven will re-download dependencies"}},
 	}
 }
 
