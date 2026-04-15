@@ -34,6 +34,19 @@ go install github.com/chen0430tw/distrike@latest
 distrike -v
 ```
 
+### Windows SmartScreen
+
+Downloaded exe files may trigger SmartScreen ("Windows protected your PC"). Fix:
+
+```powershell
+# Remove the internet download mark
+Unblock-File distrike.exe
+```
+
+Or: right-click `distrike.exe` → Properties → check "Unblock" → OK.
+
+Building from source (`go install`) never triggers SmartScreen.
+
 ### What it does NOT touch
 
 Distrike only cleans filesystem caches and temp files. It will **never** delete:
