@@ -27,12 +27,13 @@ Or grab `distrike.exe` from [Releases](https://github.com/chen0430tw/distrike/re
 
 ```bash
 distrike status                      # see all drives at a glance
+distrike topo C:                     # trace where space went
 distrike hunt                        # find what can be cleaned
 distrike clean --risk safe --yes     # clean it
 distrike watch --install             # never get surprised again
 ```
 
-**Hunt finds the prey. Clean executes the strike. Watch prevents the rebound.**
+**Topo traces the flow. Hunt finds the prey. Clean executes the strike. Watch prevents the rebound.**
 
 ## What it sees
 
@@ -81,6 +82,32 @@ Three engines. Automatic selection.
 | **Cache** | Instant | — | Previous scan |
 
 The MFT engine reads the NTFS Master File Table directly — same technique antivirus and forensic tools use. Custom binary parser, 1 MB batch I/O, parallel pipeline. It sees everything including `hiberfil.sys` and system-hidden files.
+
+## Topology analysis (`topo`)
+
+Not a tree listing. A critical path trace — follows the largest directory at each level straight to the deepest space sink.
+
+```
+$ distrike topo C:
+
+  C:\  448 GB used, 5.5 GB free  DANGER
+  Tencent Files is eating 23% (88.8 GB)
+
+    ━━━━━━━━━━━━━━━━━━━━━━━ Users                204.6 GB    53%
+    │
+    └ ━━━━━━━━━━━━━━━━━━━━━━━ asus                 201.8 GB    52%
+      │
+      └ ━━━━━━━━━━ Documents             94.4 GB    24%
+        │
+        └ ━━━━━━━━━━ Tencent Files         88.8 GB    23% ◀
+
+  Program Files           68.9 GB  ━━━━━━━━   18%
+  Windows                 39.5 GB  ━━━━   10%
+```
+
+The verdict comes first. The critical path proves it. Other branches are listed below for context.
+
+Built on [Tensorearch](https://github.com/chen0430tw/Tensorearch) topology graph architecture — directories as nodes, parent-child as edges, cumulative size as weight propagation.
 
 ## How watch works
 
@@ -141,6 +168,7 @@ Config: `%APPDATA%\distrike\config.yaml` (Windows) / `~/.config/distrike/config.
 | Command | What it does |
 |---------|---|
 | `status` | Four-color signal for every drive |
+| `topo` | Critical path trace — where space flows and sinks |
 | `scan` | Top space consumers with time filters |
 | `hunt` | Find cleanable prey with risk assessment |
 | `clean` | Execute the strike |

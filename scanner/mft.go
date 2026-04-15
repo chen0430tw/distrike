@@ -23,7 +23,12 @@ import (
 
 // MFTEngine reads NTFS Master File Table directly for fast full-disk scan.
 // Requires Administrator privileges.
-type MFTEngine struct{}
+type MFTEngine struct {
+	// Retained after Scan for topo access
+	nodes     map[uint64]*mftNode
+	rootEntry uint64
+	basePath  string
+}
 
 func (e *MFTEngine) Name() string { return "mft" }
 
@@ -425,6 +430,11 @@ func (e *MFTEngine) Scan(path string, opts ScanOptions) (*ScanResult, error) {
 		allDirs := collectAllDirs(nodes, rootEntry, basePath)
 		entries = append(entries, allDirs...)
 	}
+
+	// Retain tree for topo access
+	e.nodes = nodes
+	e.rootEntry = rootEntry
+	e.basePath = basePath
 
 	return &ScanResult{
 		RootPath:     absPath,

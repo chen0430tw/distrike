@@ -20,6 +20,13 @@ const (
 	schemaVer = "1.0"
 )
 
+// VDiskEntry represents a virtual disk found on the system.
+type VDiskEntry struct {
+	Name      string `json:"name"`
+	Path      string `json:"path"`
+	SizeBytes int64  `json:"size_bytes"`
+}
+
 // StatusOutput is the JSON schema for distrike status.
 type StatusOutput struct {
 	SchemaVersion string        `json:"schema_version"`
@@ -29,6 +36,7 @@ type StatusOutput struct {
 	Platform      string        `json:"platform"`
 	KillLineBytes int64         `json:"kill_line_bytes"`
 	Drives        []DriveOutput `json:"drives"`
+	VDisks        []VDiskEntry  `json:"vdisks,omitempty"`
 }
 
 // DriveOutput is the per-drive section of status output.
@@ -147,6 +155,22 @@ const (
 	colorPurple = "\033[38;2;147;51;234m"       // Claude Code purple
 )
 
+// signalName returns the plain text name for a signal light.
+func signalName(l signal.Light) string {
+	switch l {
+	case signal.Purple:
+		return "CRITICAL"
+	case signal.Red:
+		return "DANGER"
+	case signal.Yellow:
+		return "WARNING"
+	case signal.Green:
+		return "OK"
+	default:
+		return "UNKNOWN"
+	}
+}
+
 // signalLabel returns a colored text label for a signal light.
 func signalLabel(l signal.Light) string {
 	switch l {
@@ -179,6 +203,19 @@ func signalColor(l signal.Light) string {
 	}
 }
 
+// shortenPath truncates a path to maxLen, keeping drive + ... + filename.
+func shortenPath(p string, maxLen int) string {
+	if len(p) <= maxLen {
+		return p
+	}
+	// Keep drive letter + first dir, and filename
+	sep := string([]byte{p[0]}) // OS separator detection
+	_ = sep
+	base := p[len(p)-30:] // last 30 chars (filename + parent)
+	head := p[:maxLen-len(base)-3]
+	return head + "..." + base
+}
+
 // progressBar builds a text progress bar.
 // At width=40, resolution is 2.5% per cell.
 func progressBar(usedRatio float64, width int) string {
@@ -207,33 +244,65 @@ func RenderStatus(data StatusOutput, asJSON bool) string {
 		return string(b)
 	}
 
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Kill-line: %s\n\n", units.FormatSize(data.KillLineBytes)))
+	const barW = 30
+	const sigW = 15 // fits "CRITICAL[USB]" + padding
+	// Columns: Drive(6) | Bar(barW+1) | Used%(7) | Free(10) | Total(10) | Signal(sigW)
+	w := 6 + 1 + barW + 1 + 1 + 7 + 1 + 10 + 1 + 10 + 1 + sigW
 
+	var sb strings.Builder
+
+	// Header
+	title := fmt.Sprintf(" Distrike %s", ToolVersion)
+	killStr := fmt.Sprintf("Kill-line: %s ", units.FormatSize(data.KillLineBytes))
+	padding := w - len(title) - len(killStr)
+	if padding < 1 {
+		padding = 1
+	}
+	sb.WriteString("╭" + strings.Repeat("─", w) + "╮\n")
+	sb.WriteString("│" + title + strings.Repeat(" ", padding) + killStr + "│\n")
+	sb.WriteString("├" + strings.Repeat("─", 6) + "┬" + strings.Repeat("─", barW+1) + "┬" + strings.Repeat("─", 7) + "┬" + strings.Repeat("─", 10) + "┬" + strings.Repeat("─", 10) + "┬" + strings.Repeat("─", sigW) + "┤\n")
+	sb.WriteString(fmt.Sprintf("│ %-4s │ %-*s │ %5s │ %8s │ %8s │ %-*s│\n",
+		"Drv", barW-1, "Usage", "Used%", "Free", "Total", sigW-1, "Signal"))
+	sb.WriteString("├" + strings.Repeat("─", 6) + "┼" + strings.Repeat("─", barW+1) + "┼" + strings.Repeat("─", 7) + "┼" + strings.Repeat("─", 10) + "┼" + strings.Repeat("─", 10) + "┼" + strings.Repeat("─", sigW) + "┤\n")
+
+	// Drive rows — manual assembly to avoid ANSI codes breaking fmt width
 	for _, d := range data.Drives {
 		var usedRatio float64
 		if d.TotalBytes > 0 {
 			usedRatio = float64(d.UsedBytes) / float64(d.TotalBytes)
 		}
-		bar := progressBar(usedRatio, 40)
-		// Color the progress bar based on signal light
-		coloredBar := signalColor(d.Signal.Light) + bar + colorReset
-		label := signalLabel(d.Signal.Light)
-		pct := fmt.Sprintf("%.1f%%", usedRatio*100)
-		tag := ""
+		bar := progressBar(usedRatio, barW-3) // -3: barW minus [] brackets and space
+		pct := fmt.Sprintf("%5s", fmt.Sprintf("%.1f%%", usedRatio*100))
+		free := fmt.Sprintf("%8s", units.FormatSize(d.FreeBytes))
+		total := fmt.Sprintf("%8s", units.FormatSize(d.TotalBytes))
+
+		sigText := signalName(d.Signal.Light)
 		if d.Removable {
-			tag = " [USB]"
+			sigText += "[USB]"
 		}
-		sb.WriteString(fmt.Sprintf("%-6s %s %6s  %s free / %s  %s%s\n",
-			d.Path, coloredBar, pct,
-			units.FormatSize(d.FreeBytes),
-			units.FormatSize(d.TotalBytes),
-			label, tag,
-		))
+		paddedSig := fmt.Sprintf("%-*s", sigW-1, sigText)
+
+		drv := fmt.Sprintf("%-4s", strings.TrimRight(d.Path, `\`))
+		c := signalColor(d.Signal.Light)
+
+		sb.WriteString("│ " + drv + " │ " + c + bar + colorReset + " │ " + pct + " │ " + free + " │ " + total + " │ " + c + paddedSig + colorReset + "│\n")
 	}
-	sb.WriteString(fmt.Sprintf("\nSignal is based on free space, not percentage. Kill-line: %s\n",
-		units.FormatSize(data.KillLineBytes)))
-	sb.WriteString("  PURPLE < 1 GB | RED < kill-line | YELLOW < kill-line × 1.5 | GREEN = safe\n")
+
+	sb.WriteString("╰" + strings.Repeat("─", 6) + "┴" + strings.Repeat("─", barW+1) + "┴" + strings.Repeat("─", 7) + "┴" + strings.Repeat("─", 10) + "┴" + strings.Repeat("─", 10) + "┴" + strings.Repeat("─", sigW) + "╯\n")
+
+	// Virtual disks section
+	if len(data.VDisks) > 0 {
+		sb.WriteString("\n Virtual Disks:\n")
+		for _, v := range data.VDisks {
+			short := shortenPath(v.Path, 50)
+			sb.WriteString(fmt.Sprintf("   %-20s %10s   %s\n", v.Name, units.FormatSize(v.SizeBytes), short))
+		}
+	} else {
+		sb.WriteString("\n Virtual Disks: none\n")
+	}
+
+	// Signal legend
+	sb.WriteString("\n PURPLE < 1 GB │ RED < kill-line │ YELLOW < kill-line×1.5 │ GREEN = safe\n")
 	return sb.String()
 }
 

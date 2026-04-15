@@ -2,6 +2,10 @@ package cmd
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
 
 	"distrike/config"
 	"distrike/health"
@@ -66,6 +70,9 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		})
 	}
 
+	// Collect virtual disk info
+	statusData.VDisks = collectVDisks()
+
 	result := output.RenderStatus(statusData, jsonOutput)
 	fmt.Println(result)
 
@@ -110,4 +117,78 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	// "Error: Exit code 1" in interactive terminals. The colored output
 	// already communicates danger clearly. Scripts can parse --json output.
 	return nil
+}
+
+// collectVDisks finds known virtual disk files (WSL, Docker, Claude VM, LDPlayer, etc.)
+func collectVDisks() []output.VDiskEntry {
+	if runtime.GOOS != "windows" {
+		return nil
+	}
+
+	var results []output.VDiskEntry
+	home := os.Getenv("USERPROFILE")
+
+	// Known VHDX/VMDK locations to probe
+	type probe struct {
+		name    string
+		pattern string // glob pattern
+	}
+
+	probes := []probe{
+		{"WSL", filepath.Join(home, "AppData", "Local", "Packages", "*", "LocalState", "ext4.vhdx")},
+		{"Docker", filepath.Join(home, "AppData", "Local", "Docker", "wsl", "**", "ext4.vhdx")},
+		{"Claude VM", filepath.Join(home, "AppData", "Roaming", "Claude", "vm_bundles", "*", "*.vhdx")},
+	}
+
+	// Also check common non-home locations
+	for _, d := range []string{"C:", "D:", "E:", "F:"} {
+		probes = append(probes, probe{"Docker", d + `\Docker\DockerDesktopWSL\*\*.vhdx`})
+		probes = append(probes, probe{"LDPlayer", d + `\LDPlayer\LDPlayer*\vms\*\*.vmdk`})
+		probes = append(probes, probe{"LDPlayer", d + `\LDPlayer\LDPlayer*\*.vmdk`})
+	}
+
+	seen := make(map[string]bool)
+	for _, p := range probes {
+		matches, _ := filepath.Glob(p.pattern)
+		for _, m := range matches {
+			abs, _ := filepath.Abs(m)
+			if seen[strings.ToLower(abs)] {
+				continue
+			}
+			seen[strings.ToLower(abs)] = true
+
+			info, err := os.Stat(abs)
+			if err != nil {
+				continue
+			}
+
+			name := p.name
+			// Enrich WSL name with distro info from path
+			if name == "WSL" {
+				parts := strings.Split(abs, string(filepath.Separator))
+				for _, part := range parts {
+					if strings.Contains(part, "Ubuntu") || strings.Contains(part, "Debian") ||
+						strings.Contains(part, "openSUSE") || strings.Contains(part, "kali") ||
+						strings.Contains(part, "Fedora") || strings.Contains(part, "Arch") {
+						// Extract distro name from package path
+						idx := strings.LastIndex(part, "_")
+						if idx > 0 {
+							name = "WSL " + part[:idx]
+							// Simplify common names
+							name = strings.Replace(name, "CanonicalGroupLimited.", "", 1)
+						}
+						break
+					}
+				}
+			}
+
+			results = append(results, output.VDiskEntry{
+				Name:      name,
+				Path:      abs,
+				SizeBytes: info.Size(),
+			})
+		}
+	}
+
+	return results
 }
