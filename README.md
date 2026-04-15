@@ -157,7 +157,7 @@ Config file: `%APPDATA%\distrike\config.yaml` (Windows) / `~/.config/distrike/co
 - **Language**: Go (selected via Tree Diagram analysis, score 0.917)
 - **License**: MIT (selected via Tree Diagram + HCE analysis, score 0.81)
 - **Signal System**: Ported from treesea/CFPAI four-light risk signal
-- **MFT Engine**: Möbius ring + OPU batch I/O + Cardinal Bitset index ([paper](docs/cardinal_bitset.tex))
+- **MFT Engine**: Möbius ring + OPU batch I/O + Cardinal Bitset index ([paper PDF](docs/cardinal_bitset.pdf) | [LaTeX source](docs/cardinal_bitset.tex))
 - **Scan Cache**: SQLite (modernc.org/sqlite, pure Go, no CGO)
 - **Code Quality**: Verified by Tensorearch 20-language diagnose (32/32 PASS)
 
