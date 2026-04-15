@@ -123,14 +123,15 @@ B \in \{0, 1\}^N, \quad |B|_{\text{memory}} = \left\lceil \frac{N}{64} \right\rc
 \centering
 \caption{Operation complexity comparison}
 \label{tab:complexity}
+\scriptsize
 \begin{tabular}{@{}lccc@{}}
 \toprule
-Operation & Cardinal & Bloom ($k\!=\!7$) & HashMap \\
+Op. & Cardinal & Bloom & HashMap \\
 \midrule
-Insert & $O(1)$, 1 op & $O(k)$, 7 hashes & $O(1)$ amort. \\
-Query & $O(1)$, 1 op & $O(k)$, 7 hashes & $O(1)$ amort. \\
-Delete & $O(1)$, 1 op & N/A & $O(1)$ amort. \\
-False positive & $\mathbf{0}$ & $\varepsilon \approx 1\%$ & $\mathbf{0}$ \\
+Insert & $O(1)$ & $O(k)$ & $O(1)$\,am. \\
+Query & $O(1)$ & $O(k)$ & $O(1)$\,am. \\
+Delete & $O(1)$ & N/A & $O(1)$\,am. \\
+FP rate & $\mathbf{0}$ & $\varepsilon$ & $\mathbf{0}$ \\
 \bottomrule
 \end{tabular}
 \end{table}
