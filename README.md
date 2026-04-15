@@ -71,6 +71,37 @@ Distrike uses **absolute free space** against a kill-line threshold:
 | **YELLOW** | < kill-line × 1.5 | Attention |
 | **GREEN** | Above threshold | Safe |
 
+### Why 20 GB is the default kill-line
+
+Below 20 GB, Windows enters a **death spiral** — the system starts consuming space faster than you can free it:
+
+| What happens | Space needed | Effect when starved |
+|---|---|---|
+| **pagefile.sys expansion** | 3–5 GB | Low memory → Windows grows virtual memory → eats more space |
+| **Windows Update** | ~8 GB | Patches need temp space to unpack → fail and rollback (uses more space) |
+| **VHDX bloat** | 2–3 GB | WSL/Docker VHDX can't compact without temp space → only grows |
+| **NTFS fragmentation** | — | No contiguous free blocks → MFT fragments → performance collapses |
+| **App temp files** | 2–3 GB | Chrome, VS Code, games write temp files → write fails → crash |
+
+Total: **~18–20 GB minimum buffer** for normal system operations. Below this, the system self-consumes — the less space you have, the more space it needs, the less space you end up with.
+
+This is why it's called a **kill-line**, not a warning line. Cross it, and you can't recover without manual intervention.
+
+### The rebound problem
+
+Cleaning disk space is temporary. Caches rebuild silently:
+
+| Source | Behavior | Rebound |
+|---|---|---|
+| QQ/WeChat media cache | Every image you view is saved locally | Continuous growth |
+| Chat databases (nt_db) | Append-only, never auto-purged | Only grows |
+| WSL/Docker VHDX | Expands on use, never auto-shrinks | Only grows |
+| pagefile.sys | Grows when RAM is pressured | Dynamic |
+| Windows Update | Monthly patches + old version backups | ~1–2 GB/month |
+| Dev caches (npm, pip, cargo) | Downloaded on every `install` | Rebuilds after clean |
+
+You clean 5 GB today. Tomorrow it's back. That's why `distrike watch` exists — it monitors the rebound and alerts before you cross the kill-line again.
+
 ## How it scans
 
 Three engines. Automatic selection.
