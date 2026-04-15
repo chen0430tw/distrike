@@ -231,8 +231,9 @@ func runWatch(cmd *cobra.Command, args []string) error {
 				cleanCmd.Stderr = cmd.ErrOrStderr()
 				if err := cleanCmd.Run(); err != nil {
 					fmt.Fprintf(cmd.ErrOrStderr(), "[%s] Auto-clean error: %v\n", ts, err)
+				} else {
+					lastAutoClean = time.Now() // only cooldown on success
 				}
-				lastAutoClean = time.Now()
 			}
 
 			// Adapt interval based on worst signal

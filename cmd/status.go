@@ -140,8 +140,10 @@ func collectVDisks() []output.VDiskEntry {
 		{"Claude VM", filepath.Join(home, "AppData", "Roaming", "Claude", "vm_bundles", "*", "*.vhdx")},
 	}
 
-	// Also check common non-home locations
-	for _, d := range []string{"C:", "D:", "E:", "F:"} {
+	// Check all mounted drives for Docker/LDPlayer vdisks
+	driveList, _ := killline.EnumerateDrives()
+	for _, drv := range driveList {
+		d := strings.TrimRight(drv.Path, `\`)
 		probes = append(probes, probe{"Docker", d + `\Docker\DockerDesktopWSL\*\*.vhdx`})
 		probes = append(probes, probe{"LDPlayer", d + `\LDPlayer\LDPlayer*\vms\*\*.vmdk`})
 		probes = append(probes, probe{"LDPlayer", d + `\LDPlayer\LDPlayer*\*.vmdk`})

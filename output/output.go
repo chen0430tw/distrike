@@ -203,17 +203,26 @@ func signalColor(l signal.Light) string {
 	}
 }
 
-// shortenPath truncates a path to maxLen, keeping drive + ... + filename.
+// shortenPath truncates a path to maxLen, keeping head + ... + tail.
 func shortenPath(p string, maxLen int) string {
-	if len(p) <= maxLen {
+	if len(p) <= maxLen || maxLen < 10 {
 		return p
 	}
-	// Keep drive letter + first dir, and filename
-	sep := string([]byte{p[0]}) // OS separator detection
-	_ = sep
-	base := p[len(p)-30:] // last 30 chars (filename + parent)
-	head := p[:maxLen-len(base)-3]
-	return head + "..." + base
+	tailLen := maxLen / 3
+	if tailLen > 30 {
+		tailLen = 30
+	}
+	if tailLen >= len(p) {
+		return p
+	}
+	headLen := maxLen - tailLen - 3 // 3 for "..."
+	if headLen < 1 {
+		headLen = 1
+	}
+	if headLen >= len(p) {
+		return p
+	}
+	return p[:headLen] + "..." + p[len(p)-tailLen:]
 }
 
 // progressBar builds a text progress bar.
@@ -246,8 +255,9 @@ func RenderStatus(data StatusOutput, asJSON bool) string {
 
 	const barW = 30
 	const sigW = 15 // fits "CRITICAL[USB]" + padding
-	// Columns: Drive(6) | Bar(barW+1) | Used%(7) | Free(10) | Total(10) | Signal(sigW)
-	w := 6 + 1 + barW + 1 + 1 + 7 + 1 + 10 + 1 + 10 + 1 + sigW
+	const pctW = 8  // fits "100.0%" + padding
+	// Columns: Drive(6) | Bar(barW+1) | Used%(pctW) | Free(10) | Total(10) | Signal(sigW)
+	w := 6 + 1 + barW + 1 + 1 + pctW + 1 + 10 + 1 + 10 + 1 + sigW
 
 	var sb strings.Builder
 
@@ -260,10 +270,10 @@ func RenderStatus(data StatusOutput, asJSON bool) string {
 	}
 	sb.WriteString("╭" + strings.Repeat("─", w) + "╮\n")
 	sb.WriteString("│" + title + strings.Repeat(" ", padding) + killStr + "│\n")
-	sb.WriteString("├" + strings.Repeat("─", 6) + "┬" + strings.Repeat("─", barW+1) + "┬" + strings.Repeat("─", 7) + "┬" + strings.Repeat("─", 10) + "┬" + strings.Repeat("─", 10) + "┬" + strings.Repeat("─", sigW) + "┤\n")
-	sb.WriteString(fmt.Sprintf("│ %-4s │ %-*s │ %5s │ %8s │ %8s │ %-*s│\n",
+	sb.WriteString("├" + strings.Repeat("─", 6) + "┬" + strings.Repeat("─", barW+1) + "┬" + strings.Repeat("─", pctW) + "┬" + strings.Repeat("─", 10) + "┬" + strings.Repeat("─", 10) + "┬" + strings.Repeat("─", sigW) + "┤\n")
+	sb.WriteString(fmt.Sprintf("│ %-4s │ %-*s │ %6s │ %8s │ %8s │ %-*s│\n",
 		"Drv", barW-1, "Usage", "Used%", "Free", "Total", sigW-1, "Signal"))
-	sb.WriteString("├" + strings.Repeat("─", 6) + "┼" + strings.Repeat("─", barW+1) + "┼" + strings.Repeat("─", 7) + "┼" + strings.Repeat("─", 10) + "┼" + strings.Repeat("─", 10) + "┼" + strings.Repeat("─", sigW) + "┤\n")
+	sb.WriteString("├" + strings.Repeat("─", 6) + "┼" + strings.Repeat("─", barW+1) + "┼" + strings.Repeat("─", pctW) + "┼" + strings.Repeat("─", 10) + "┼" + strings.Repeat("─", 10) + "┼" + strings.Repeat("─", sigW) + "┤\n")
 
 	// Drive rows — manual assembly to avoid ANSI codes breaking fmt width
 	for _, d := range data.Drives {
@@ -272,7 +282,7 @@ func RenderStatus(data StatusOutput, asJSON bool) string {
 			usedRatio = float64(d.UsedBytes) / float64(d.TotalBytes)
 		}
 		bar := progressBar(usedRatio, barW-3) // -3: barW minus [] brackets and space
-		pct := fmt.Sprintf("%5s", fmt.Sprintf("%.1f%%", usedRatio*100))
+		pct := fmt.Sprintf("%6s", fmt.Sprintf("%.1f%%", usedRatio*100))
 		free := fmt.Sprintf("%8s", units.FormatSize(d.FreeBytes))
 		total := fmt.Sprintf("%8s", units.FormatSize(d.TotalBytes))
 
@@ -288,7 +298,7 @@ func RenderStatus(data StatusOutput, asJSON bool) string {
 		sb.WriteString("│ " + drv + " │ " + c + bar + colorReset + " │ " + pct + " │ " + free + " │ " + total + " │ " + c + paddedSig + colorReset + "│\n")
 	}
 
-	sb.WriteString("╰" + strings.Repeat("─", 6) + "┴" + strings.Repeat("─", barW+1) + "┴" + strings.Repeat("─", 7) + "┴" + strings.Repeat("─", 10) + "┴" + strings.Repeat("─", 10) + "┴" + strings.Repeat("─", sigW) + "╯\n")
+	sb.WriteString("╰" + strings.Repeat("─", 6) + "┴" + strings.Repeat("─", barW+1) + "┴" + strings.Repeat("─", pctW) + "┴" + strings.Repeat("─", 10) + "┴" + strings.Repeat("─", 10) + "┴" + strings.Repeat("─", sigW) + "╯\n")
 
 	// Virtual disks section
 	if len(data.VDisks) > 0 {
