@@ -282,7 +282,12 @@ func runClean(cmd *cobra.Command, args []string) error {
 	fmt.Println(result)
 
 	if len(cleanOut.Data.Errors) > 0 {
-		os.Exit(2)
+		fmt.Fprintln(cmd.ErrOrStderr(), "\nTip: Files locked by running programs (browsers, editors, etc.) cannot be cleaned.")
+		fmt.Fprintln(cmd.ErrOrStderr(), "     Close those programs and re-run to free more space.")
+		if cleanOut.Data.FreedBytes == 0 {
+			os.Exit(2) // complete failure
+		}
+		// Partial success: some items cleaned, some failed — exit 0
 	}
 	return nil
 }

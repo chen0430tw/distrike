@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"distrike/hunter"
@@ -75,9 +76,53 @@ func Execute(prey hunter.Prey) (int64, error) {
 	return freed, nil
 }
 
+// selfProtectPaths returns paths that must not be deleted during cleanup.
+// Includes the current process's temp directory and executable path.
+func selfProtectPaths() map[string]bool {
+	protected := make(map[string]bool)
+
+	// Protect the directory containing the current executable
+	if exe, err := os.Executable(); err == nil {
+		protected[filepath.Dir(exe)] = true
+	}
+
+	// Protect TEMP subdirectories belonging to the current process's parent tools.
+	// Claude Code (and similar) store output in TEMP/claude/<project>/<session>/tasks/
+	// Pattern: any directory under TEMP that contains our PID or "claude" or "distrike"
+	tmpDir := os.TempDir()
+	if entries, err := os.ReadDir(tmpDir); err == nil {
+		pid := fmt.Sprintf("%d", os.Getpid())
+		for _, e := range entries {
+			if !e.IsDir() {
+				continue
+			}
+			name := e.Name()
+			// Protect claude/distrike working directories and PID-named dirs
+			if name == "claude" || name == "distrike" || name == pid {
+				protected[filepath.Join(tmpDir, name)] = true
+			}
+		}
+	}
+
+	return protected
+}
+
+// isProtected checks if a path is or is under a protected path.
+func isProtected(path string, protected map[string]bool) bool {
+	clean := filepath.Clean(path)
+	for p := range protected {
+		if clean == p || strings.HasPrefix(clean, p+string(filepath.Separator)) {
+			return true
+		}
+	}
+	return false
+}
+
 // CleanContents deletes all files and subdirectories inside a directory,
 // but preserves the directory itself. Used for SAFE manual prey like
 // Temp, CrashDumps, browser caches, etc.
+// Automatically skips the current process's temp files to avoid
+// deleting its own output mid-execution.
 // Returns the number of bytes freed.
 func CleanContents(dirPath string) (int64, error) {
 	info, err := os.Stat(dirPath)
@@ -93,6 +138,7 @@ func CleanContents(dirPath string) (int64, error) {
 		return size, nil
 	}
 
+	protected := selfProtectPaths()
 	before := dirSize(dirPath)
 
 	entries, err := os.ReadDir(dirPath)
@@ -101,8 +147,13 @@ func CleanContents(dirPath string) (int64, error) {
 	}
 
 	var lastErr error
+	var skipped int
 	for _, entry := range entries {
 		p := filepath.Join(dirPath, entry.Name())
+		if isProtected(p, protected) {
+			skipped++
+			continue
+		}
 		if err := os.RemoveAll(p); err != nil {
 			lastErr = err // continue cleaning others
 		}
@@ -115,8 +166,11 @@ func CleanContents(dirPath string) (int64, error) {
 	}
 
 	if lastErr != nil {
-		return freed, fmt.Errorf("partial cleanup (%s freed), last error: %w",
-			formatBytes(freed), lastErr)
+		msg := fmt.Sprintf("partial cleanup (%s freed)", formatBytes(freed))
+		if skipped > 0 {
+			msg += fmt.Sprintf(", %d items skipped (in use by current process)", skipped)
+		}
+		return freed, fmt.Errorf("%s, last error: %w", msg, lastErr)
 	}
 	return freed, nil
 }

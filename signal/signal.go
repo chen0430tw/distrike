@@ -60,6 +60,13 @@ func Classify(usedRatio, concentration float64, freeBytes, killLine int64, t Thr
 
 	var light Light
 	switch {
+	// Hard rules: free space alone determines critical/danger signals.
+	// These fire regardless of concentration (which may be unavailable).
+	case freeBytes < 1<<30: // < 1 GB — always PURPLE
+		light = Purple
+	case freeBytes < killLine: // < kill-line — always RED
+		light = Red
+	// Soft rules: combined ratio + concentration for early warning.
 	case usedRatio > t.PurpleUsedRatio && concentration > t.PurpleConcentration && freeBudget < 1.0:
 		light = Purple
 	case usedRatio > t.RedUsedRatio && concentration > t.RedConcentration:

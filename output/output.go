@@ -137,13 +137,13 @@ func platform() string {
 	return runtime.GOOS
 }
 
-// ANSI color codes
+// 24-bit RGB color codes
 const (
 	colorReset  = "\033[0m"
-	colorGreen  = "\033[32m"
-	colorYellow = "\033[33m"
-	colorRed    = "\033[31m"
-	colorPurple = "\033[35m"
+	colorGreen  = "\033[32m"                    // ANSI green (matches cli-highlight)
+	colorYellow = "\033[38;2;255;193;7m"        // Claude Code warning amber
+	colorRed    = "\033[38;2;218;38;38m"        // Windows Explorer capacity-bar red #DA2626
+	colorPurple = "\033[38;2;147;51;234m"       // Claude Code purple
 )
 
 // signalLabel returns a colored text label for a signal light.
@@ -179,8 +179,9 @@ func signalColor(l signal.Light) string {
 }
 
 // progressBar builds a text progress bar.
+// At width=40, resolution is 2.5% per cell.
 func progressBar(usedRatio float64, width int) string {
-	filled := int(usedRatio * float64(width))
+	filled := int(usedRatio*float64(width) + 0.5) // round
 	if filled > width {
 		filled = width
 	}
@@ -213,17 +214,21 @@ func RenderStatus(data StatusOutput, asJSON bool) string {
 		if d.TotalBytes > 0 {
 			usedRatio = float64(d.UsedBytes) / float64(d.TotalBytes)
 		}
-		bar := progressBar(usedRatio, 20)
+		bar := progressBar(usedRatio, 40)
 		// Color the progress bar based on signal light
 		coloredBar := signalColor(d.Signal.Light) + bar + colorReset
 		label := signalLabel(d.Signal.Light)
-		sb.WriteString(fmt.Sprintf("%-6s %s  %s / %s  %s\n",
-			d.Path, coloredBar,
+		pct := fmt.Sprintf("%.1f%%", usedRatio*100)
+		sb.WriteString(fmt.Sprintf("%-6s %s %6s  %s free / %s  %s\n",
+			d.Path, coloredBar, pct,
 			units.FormatSize(d.FreeBytes),
 			units.FormatSize(d.TotalBytes),
 			label,
 		))
 	}
+	sb.WriteString(fmt.Sprintf("\nSignal is based on free space, not percentage. Kill-line: %s\n",
+		units.FormatSize(data.KillLineBytes)))
+	sb.WriteString("  PURPLE < 1 GB | RED < kill-line | YELLOW < kill-line × 1.5 | GREEN = safe\n")
 	return sb.String()
 }
 

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"distrike/config"
+	"distrike/internal/notify"
 	"distrike/internal/units"
 	"distrike/killline"
 	dSignal "distrike/signal"
@@ -26,6 +27,8 @@ var (
 	watchInstall   bool
 	watchUninstall bool
 	watchStatus    bool
+	watchAutoClean bool
+	watchNoNotify  bool
 )
 
 var watchCmd = &cobra.Command{
@@ -48,6 +51,8 @@ func init() {
 	watchCmd.Flags().StringVar(&watchInterval, "interval", "5s", "override purple interval (e.g. 5s, 1m)")
 	watchCmd.Flags().BoolVar(&watchDaemon, "daemon", false, "daemon mode: GC + memory management")
 	watchCmd.Flags().BoolVar(&watchAll, "all", false, "watch all drives (default: only alerting drives)")
+	watchCmd.Flags().BoolVar(&watchAutoClean, "auto-clean", false, "auto-run 'clean --risk safe' when signal hits RED/PURPLE")
+	watchCmd.Flags().BoolVar(&watchNoNotify, "no-notify", false, "disable desktop notifications")
 	watchCmd.Flags().BoolVar(&watchInstall, "install", false, "register as Windows scheduled task (runs at login)")
 	watchCmd.Flags().BoolVar(&watchUninstall, "uninstall", false, "remove the scheduled task")
 	watchCmd.Flags().BoolVar(&watchStatus, "status", false, "check if watch is running")
@@ -130,10 +135,19 @@ func runWatch(cmd *cobra.Command, args []string) error {
 	fmt.Fprintf(cmd.ErrOrStderr(), "Watching drives (kill-line: %s)\n", units.FormatSize(killLineBytes))
 	fmt.Fprintf(cmd.ErrOrStderr(), "  Adaptive intervals: PURPLE=%s RED=%s YELLOW=%s GREEN=%s\n",
 		intervals.purple, intervals.red, intervals.yellow, intervals.green)
+	if watchAutoClean {
+		fmt.Fprintf(cmd.ErrOrStderr(), "  Auto-clean: enabled (will run 'clean --risk safe' on RED/PURPLE)\n")
+	}
+	if watchNoNotify {
+		fmt.Fprintf(cmd.ErrOrStderr(), "  Notifications: disabled\n")
+	}
 
 	iteration := 0
 	lastMemReport := time.Now()
 	currentInterval := 1 * time.Millisecond // first check immediately
+	prevWorstLevel := 0                      // track signal changes for notification
+	lastAutoClean := time.Time{}             // cooldown for auto-clean
+	const autoCleanCooldown = 10 * time.Minute
 
 	for {
 		timer := time.NewTimer(currentInterval)
@@ -153,6 +167,8 @@ func runWatch(cmd *cobra.Command, args []string) error {
 
 			// Determine the worst signal across all drives to set next interval
 			worstLevel := 0 // 0=green, 1=yellow, 2=red, 3=purple
+			var worstDrive string
+			var worstFree int64
 
 			for _, d := range drives {
 				var usedRatio float64
@@ -165,28 +181,58 @@ func runWatch(cmd *cobra.Command, args []string) error {
 				ts := time.Now().Format("15:04:05")
 				yellowLine := int64(float64(killLineBytes) * 1.5)
 
+				level := 0
 				if d.FreeBytes < 1<<30 { // < 1GB
 					fmt.Fprintf(cmd.ErrOrStderr(), "[%s] PURPLE %s: %s free (< 1 GB!) signal=%s\n",
 						ts, d.Path, units.FormatSize(d.FreeBytes), sig.Light)
-					if worstLevel < 3 {
-						worstLevel = 3
-					}
+					level = 3
 				} else if d.FreeBytes < killLineBytes {
 					fmt.Fprintf(cmd.ErrOrStderr(), "[%s] RED %s: %s free (below kill-line %s) signal=%s\n",
 						ts, d.Path, units.FormatSize(d.FreeBytes), units.FormatSize(killLineBytes), sig.Light)
-					if worstLevel < 2 {
-						worstLevel = 2
-					}
+					level = 2
 				} else if d.FreeBytes < yellowLine {
 					fmt.Fprintf(cmd.ErrOrStderr(), "[%s] YELLOW %s: %s free (approaching kill-line) signal=%s\n",
 						ts, d.Path, units.FormatSize(d.FreeBytes), sig.Light)
-					if worstLevel < 1 {
-						worstLevel = 1
-					}
+					level = 1
 				} else if watchAll {
 					fmt.Fprintf(cmd.ErrOrStderr(), "[%s] GREEN %s: %s free signal=%s\n",
 						ts, d.Path, units.FormatSize(d.FreeBytes), sig.Light)
 				}
+
+				if level > worstLevel {
+					worstLevel = level
+					worstDrive = d.Path
+					worstFree = d.FreeBytes
+				}
+			}
+
+			// Desktop notification when signal worsens
+			if !watchNoNotify && worstLevel > prevWorstLevel && worstLevel >= 2 {
+				levelNames := []string{"GREEN", "YELLOW", "RED", "PURPLE"}
+				title := fmt.Sprintf("Distrike: %s", levelNames[worstLevel])
+				msg := fmt.Sprintf("%s only %s free", worstDrive, units.FormatSize(worstFree))
+				if worstLevel == 3 {
+					msg += " — CRITICAL, immediate cleanup needed!"
+				} else {
+					msg += " — below kill-line, cleanup recommended"
+				}
+				_ = notify.Send(title, msg)
+			}
+			prevWorstLevel = worstLevel
+
+			// Auto-clean on RED/PURPLE (with cooldown to avoid spamming)
+			if watchAutoClean && worstLevel >= 2 && time.Since(lastAutoClean) > autoCleanCooldown {
+				ts := time.Now().Format("15:04:05")
+				fmt.Fprintf(cmd.ErrOrStderr(), "[%s] Auto-clean triggered (signal=%s)\n",
+					ts, []string{"GREEN", "YELLOW", "RED", "PURPLE"}[worstLevel])
+				exePath, _ := os.Executable()
+				cleanCmd := exec.Command(exePath, "clean", "--risk", "safe", "--yes")
+				cleanCmd.Stdout = cmd.ErrOrStderr()
+				cleanCmd.Stderr = cmd.ErrOrStderr()
+				if err := cleanCmd.Run(); err != nil {
+					fmt.Fprintf(cmd.ErrOrStderr(), "[%s] Auto-clean error: %v\n", ts, err)
+				}
+				lastAutoClean = time.Now()
 			}
 
 			// Adapt interval based on worst signal
