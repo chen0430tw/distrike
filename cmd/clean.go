@@ -58,13 +58,19 @@ func runClean(cmd *cobra.Command, args []string) error {
 	}
 
 	minScanSize, _ := units.ParseSize(cfg.Scan.MinSize)
+	// Must match hunt scan parameters so prey is found consistently
+	huntDepth := cfg.Scan.MaxDepth
+	if huntDepth < 10 {
+		huntDepth = 10
+	}
 	scanOpts := scanner.ScanOptions{
-		MaxDepth:       cfg.Scan.MaxDepth,
+		MaxDepth:       huntDepth,
 		MinSize:        minScanSize,
-		TopN:           200,
+		TopN:           500,
 		FollowSymlinks: cfg.Scan.FollowSymlinks,
 		Workers:        cfg.Scan.Workers,
 		Exclude:        cfg.Scan.Exclude,
+		CollectAll:     true,
 	}
 
 	var allEntries []scanner.DirEntry
@@ -90,6 +96,13 @@ func runClean(cmd *cobra.Command, args []string) error {
 	minPreySize, _ := units.ParseSize(cfg.Hunt.MinPreySize)
 	matcher := hunter.NewMatcher(rules, cfg.Whitelist, minPreySize)
 	prey := matcher.Match(allEntries)
+
+	// Detect Docker if enabled (must match hunt behavior)
+	if cfg.Docker.Enabled {
+		dd := &hunter.DockerDetector{}
+		dockerPrey, _, _ := dd.Detect()
+		prey = append(prey, dockerPrey...)
+	}
 
 	// Filter by --risk
 	var filtered []hunter.Prey
@@ -129,6 +142,8 @@ func runClean(cmd *cobra.Command, args []string) error {
 			fmt.Printf("  %s  %s  %s\n", tag, units.FormatSize(p.SizeBytes), p.Path)
 			if p.Action.Type == "command" {
 				fmt.Printf("    Command: %s\n", p.Action.Command)
+			} else if p.Risk == hunter.RiskSafe {
+				fmt.Printf("    Auto: clean-contents (delete directory contents)\n")
 			} else {
 				fmt.Printf("    Manual: %s\n", p.Action.Hint)
 			}
@@ -204,7 +219,36 @@ func runClean(cmd *cobra.Command, args []string) error {
 		}
 
 		if p.Action.Type != "command" {
-			fmt.Fprintf(cmd.ErrOrStderr(), "Skipping %s (manual action: %s)\n", p.Path, p.Action.Hint)
+			// SAFE manual prey: auto-clean by deleting directory contents.
+			// CAUTION/DANGER manual prey: still skip (needs user judgment).
+			if p.Risk == hunter.RiskSafe {
+				fmt.Fprintf(cmd.ErrOrStderr(), "Cleaning %s (contents)...\n", p.Path)
+				freed, err := cleaner.CleanContents(p.Path)
+				item := output.CleanedItem{
+					Path:       p.Path,
+					SizeBytes:  p.SizeBytes,
+					SizeHuman:  units.FormatSize(p.SizeBytes),
+					Kind:       string(p.Kind),
+					Risk:       string(p.Risk),
+					Command:    "clean-contents",
+					FreedBytes: freed,
+				}
+				if err != nil {
+					errMsg := err.Error()
+					cleanOut.Data.Errors = append(cleanOut.Data.Errors, fmt.Sprintf("%s: %s", p.Path, errMsg))
+					_ = cleaner.RecordHistory(p, freed, freed > 0, errMsg)
+					if freed > 0 {
+						cleanOut.Data.FreedBytes += freed
+						cleanOut.Data.Cleaned = append(cleanOut.Data.Cleaned, item)
+					}
+				} else {
+					cleanOut.Data.FreedBytes += freed
+					cleanOut.Data.Cleaned = append(cleanOut.Data.Cleaned, item)
+					_ = cleaner.RecordHistory(p, freed, true, "")
+				}
+			} else {
+				fmt.Fprintf(cmd.ErrOrStderr(), "Skipping %s (manual action: %s)\n", p.Path, p.Action.Hint)
+			}
 			continue
 		}
 

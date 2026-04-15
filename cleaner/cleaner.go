@@ -75,6 +75,71 @@ func Execute(prey hunter.Prey) (int64, error) {
 	return freed, nil
 }
 
+// CleanContents deletes all files and subdirectories inside a directory,
+// but preserves the directory itself. Used for SAFE manual prey like
+// Temp, CrashDumps, browser caches, etc.
+// Returns the number of bytes freed.
+func CleanContents(dirPath string) (int64, error) {
+	info, err := os.Stat(dirPath)
+	if err != nil {
+		return 0, fmt.Errorf("stat %s: %w", dirPath, err)
+	}
+	if !info.IsDir() {
+		// Single file: just delete it
+		size := info.Size()
+		if err := os.Remove(dirPath); err != nil {
+			return 0, fmt.Errorf("removing %s: %w", dirPath, err)
+		}
+		return size, nil
+	}
+
+	before := dirSize(dirPath)
+
+	entries, err := os.ReadDir(dirPath)
+	if err != nil {
+		return 0, fmt.Errorf("reading %s: %w", dirPath, err)
+	}
+
+	var lastErr error
+	for _, entry := range entries {
+		p := filepath.Join(dirPath, entry.Name())
+		if err := os.RemoveAll(p); err != nil {
+			lastErr = err // continue cleaning others
+		}
+	}
+
+	after := dirSize(dirPath)
+	freed := before - after
+	if freed < 0 {
+		freed = 0
+	}
+
+	if lastErr != nil {
+		return freed, fmt.Errorf("partial cleanup (%s freed), last error: %w",
+			formatBytes(freed), lastErr)
+	}
+	return freed, nil
+}
+
+// formatBytes is a minimal size formatter for error messages.
+func formatBytes(b int64) string {
+	const (
+		kb = 1024
+		mb = kb * 1024
+		gb = mb * 1024
+	)
+	switch {
+	case b >= gb:
+		return fmt.Sprintf("%.1f GB", float64(b)/float64(gb))
+	case b >= mb:
+		return fmt.Sprintf("%.1f MB", float64(b)/float64(mb))
+	case b >= kb:
+		return fmt.Sprintf("%.1f KB", float64(b)/float64(kb))
+	default:
+		return fmt.Sprintf("%d B", b)
+	}
+}
+
 // buildCommand creates an exec.Cmd for the given command string and shell preference.
 func buildCommand(command, shell string) *exec.Cmd {
 	if shell == "" {
