@@ -83,9 +83,20 @@ Below 20 GB, Windows enters a **death spiral** — the system starts consuming s
 | **NTFS fragmentation** | — | No contiguous free blocks → MFT fragments → performance collapses |
 | **App temp files** | 2–3 GB | Chrome, VS Code, games write temp files → write fails → crash |
 
-Total: **~18–20 GB minimum buffer** for normal system operations. Below this, the system self-consumes — the less space you have, the more space it needs, the less space you end up with.
+Total: **~18–20 GB minimum buffer** for normal system operations.
 
-This is why it's called a **kill-line**, not a warning line. Cross it, and you can't recover without manual intervention.
+The math: when free space `F` drops below kill-line `K`, a positive feedback term `S(F)` activates:
+
+```
+Normal:     dF/dt = -C(t)                    (linear cache growth)
+Below K:    dF/dt = -C(t) - α(K - F)²/K      (system self-consumption)
+```
+
+The less space you have, the more space the system consumes. Survival requires cleanup rate `R > C(t) + S(F)`, which becomes impossible as `F → 0`.
+
+`K = B_page + B_update + B_vhdx + B_app = 5 + 8 + 3 + 3 ≈ 20 GB`
+
+This is why it's called a **kill-line**, not a warning line. Cross it, and you can't recover without manual intervention. Full derivation in [DESIGN.md](docs/DESIGN.md).
 
 ### The rebound problem
 
