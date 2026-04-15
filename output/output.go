@@ -140,7 +140,7 @@ func platform() string {
 // 24-bit RGB color codes
 const (
 	colorReset  = "\033[0m"
-	colorGreen  = "\033[32m"                    // ANSI green (matches cli-highlight)
+	colorGreen  = "\033[38;2;50;205;50m"        // Lime green rgb(50,205,50)
 	colorYellow = "\033[38;2;255;193;7m"        // Claude Code warning amber
 	colorRed    = "\033[38;2;218;38;38m"        // Windows Explorer capacity-bar red #DA2626
 	colorPurple = "\033[38;2;147;51;234m"       // Claude Code purple
