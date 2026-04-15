@@ -293,7 +293,7 @@ func (e *MFTEngine) Scan(path string, opts ScanOptions) (*ScanResult, error) {
 				resolved++
 			}
 		}
-		// Möbius twist: only for the specific unresolved pendingRefs owners.
+		// Mobius twist: only for the specific unresolved pendingRefs owners.
 		// Don't scan all 31K+ zero-size files — most are genuinely empty.
 		unresolvedOwners := make(map[uint64]bool)
 		for _, ref := range needIO {
@@ -303,7 +303,7 @@ func (e *MFTEngine) Scan(path string, opts ScanOptions) (*ScanResult, error) {
 			}
 		}
 		if len(unresolvedOwners) > 0 {
-			fmt.Fprintf(os.Stderr, "  Möbius pass: %d unresolved owners...\n", len(unresolvedOwners))
+			fmt.Fprintf(os.Stderr, "  Mobius pass: %d unresolved owners...\n", len(unresolvedOwners))
 			mobiusResolved := 0
 			for entryNum := range unresolvedOwners {
 				node, ok := nodes[entryNum]
@@ -367,7 +367,7 @@ func (e *MFTEngine) Scan(path string, opts ScanOptions) (*ScanResult, error) {
 				}
 			}
 			resolved += mobiusResolved
-			fmt.Fprintf(os.Stderr, "  Möbius resolved: %d additional\n", mobiusResolved)
+			fmt.Fprintf(os.Stderr, "  Mobius resolved: %d additional\n", mobiusResolved)
 		}
 
 		fmt.Fprintf(os.Stderr, "  Total resolved: %d / %d external references\n", resolved, len(pendingRefs))
@@ -524,11 +524,11 @@ func parseMFTRecord(data []byte, recordSize int64, opts ScanOptions) (*mftNode, 
 
 		switch attrType {
 		case 0x20: // $ATTRIBUTE_LIST
-			// Möbius side A: resident ATTRLIST — parse directly
+			// Mobius side A: resident ATTRLIST — parse directly
 			if alData := getResidentData(data, offset); alData != nil {
 				externalDataRefs = append(externalDataRefs, parseAttributeList(alData, 0x80)...)
 			}
-			// Side B (non-resident ATTRLIST) is handled in the Möbius ring pass
+			// Side B (non-resident ATTRLIST) is handled in the Mobius ring pass
 
 		case 0x30: // $FILE_NAME
 			if fnData := getResidentData(data, offset); fnData != nil && len(fnData) >= 66 {
