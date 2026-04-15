@@ -56,7 +56,10 @@ func runTopo(cmd *cobra.Command, args []string) error {
 		}
 		killLineBytes, _ := units.ParseSize(cfg.KillLine)
 		thresholds := signal.DefaultThresholds()
-		worstLevel := -1
+		// Pick worst non-removable drive first; fall back to any worst drive
+		worstFixed := -1
+		worstAny := -1
+		var fixedPath, anyPath string
 		for _, d := range drives {
 			var r float64
 			if d.TotalBytes > 0 {
@@ -64,10 +67,19 @@ func runTopo(cmd *cobra.Command, args []string) error {
 			}
 			sig := signal.Classify(r, 0, d.FreeBytes, killLineBytes, thresholds)
 			lvl := topoSignalLevel(sig.Light)
-			if lvl > worstLevel {
-				worstLevel = lvl
-				targetPath = d.Path
+			if lvl > worstAny {
+				worstAny = lvl
+				anyPath = d.Path
 			}
+			if !d.Removable && lvl > worstFixed {
+				worstFixed = lvl
+				fixedPath = d.Path
+			}
+		}
+		if fixedPath != "" {
+			targetPath = fixedPath
+		} else {
+			targetPath = anyPath
 		}
 	}
 	if targetPath == "" {
