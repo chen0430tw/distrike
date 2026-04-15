@@ -107,6 +107,13 @@ $ distrike topo C:
 
 The verdict comes first. The critical path proves it. Other branches are listed below for context.
 
+| Mode | What you get |
+|------|---|
+| **As Admin** | Full critical path trace with cumulative sizes from MFT engine |
+| **Without Admin** | Top-level directory breakdown (no drill-down) |
+
+Run as Administrator for the complete topology.
+
 Built on [Tensorearch](https://github.com/chen0430tw/Tensorearch) topology graph architecture — directories as nodes, parent-child as edges, cumulative size as weight propagation.
 
 ## How watch works

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -23,11 +24,14 @@ var topoCmd = &cobra.Command{
 	Use:   "topo [path]",
 	Short: "Trace where space flows — find the deepest sinks",
 	Long: `Topology view of disk space usage. Built on Tensorearch's
-node-edge-weight propagation graph. Automatically drills into the
-largest directories to show where space concentrates.
+node-edge-weight propagation graph.
 
-Uses the MFT engine (Windows Admin) for accurate cumulative sizes.
-Falls back to fastwalk on other platforms.`,
+As Admin: full critical path trace — drills into the largest directory
+chain from root to the deepest space sink, with cumulative sizes from
+the MFT engine.
+
+Without Admin: top-level directory breakdown only (no drill-down).
+Run as Administrator for the complete topology.`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runTopo,
 }
@@ -175,31 +179,62 @@ func runTopo(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// === Critical path ===
-	fmt.Println()
-	traceCriticalPath(root, totalSize, barMax, topoDepth)
-	fmt.Println()
-
-	// === Other branches ===
-	for i, child := range root.Children {
-		if i == 0 || !child.IsDir || child.Size < minBytes {
-			continue
+	// Check if tree has depth (MFT) or is flat (fastwalk fallback)
+	hasDepth := false
+	for _, c := range root.Children {
+		if len(c.Children) > 0 {
+			hasDepth = true
+			break
 		}
-		pct := float64(child.Size) / float64(totalSize) * 100
-		barLen := int(pct / 100 * float64(barMax))
-		if barLen < 1 {
-			barLen = 1
-		}
-		fmt.Printf("  %-22s %8s  %s %4.0f%%\n",
-			child.Name,
-			units.FormatSize(child.Size),
-			strings.Repeat("━", barLen),
-			pct,
-		)
 	}
+
+	fmt.Println()
+	if hasDepth {
+		// === Critical path (MFT mode) ===
+		traceCriticalPath(root, totalSize, barMax, topoDepth)
+		fmt.Println()
+
+		// === Other branches ===
+		for i, child := range root.Children {
+			if i == 0 || !child.IsDir || child.Size < minBytes {
+				continue
+			}
+			pct := float64(child.Size) / float64(totalSize) * 100
+			barLen := int(pct / 100 * float64(barMax))
+			if barLen < 1 {
+				barLen = 1
+			}
+			fmt.Printf("  %-22s %8s  %s %4.0f%%\n",
+				child.Name,
+				units.FormatSize(child.Size),
+				strings.Repeat("━", barLen),
+				pct,
+			)
+		}
+	} else {
+		// === Flat mode (fastwalk fallback) — show all significant entries ===
+		for _, child := range root.Children {
+			if child.Size < minBytes {
+				continue
+			}
+			pct := float64(child.Size) / float64(totalSize) * 100
+			barLen := int(pct / 100 * float64(barMax))
+			if barLen < 1 {
+				barLen = 1
+			}
+			fmt.Printf("  %4.0f%%  %s %-22s %8s\n",
+				pct,
+				strings.Repeat("━", barLen),
+				child.Name,
+				units.FormatSize(child.Size),
+			)
+		}
+	}
+	// (skip the old "Other branches" block below)
 	fmt.Println()
 	return nil
 }
+
 
 // traceCriticalPath prints the critical path — one line per hop, traceroute-style.
 // Skips the root itself; starts from the first meaningful directory.
@@ -294,16 +329,23 @@ func findSink(root *scanner.TopoNode, maxDepth int) *scanner.TopoNode {
 
 // buildFallbackTree builds a simple tree from fastwalk flat entries (non-MFT fallback).
 func buildFallbackTree(entries []scanner.DirEntry, rootPath string, totalUsed int64) *scanner.TopoNode {
+	// Normalize rootPath to end with separator for clean name extraction
+	cleanRoot := strings.TrimRight(rootPath, `\/`) + string(filepath.Separator)
+
 	root := &scanner.TopoNode{
-		Name: rootPath,
-		Path: rootPath,
-		Size: totalUsed,
+		Name:  rootPath,
+		Path:  rootPath,
+		Size:  totalUsed,
 		IsDir: true,
 	}
 	for _, e := range entries {
 		if e.SizeBytes > 0 {
+			name := strings.TrimPrefix(e.Path, cleanRoot)
+			if name == "" || name == e.Path {
+				name = filepath.Base(e.Path)
+			}
 			root.Children = append(root.Children, &scanner.TopoNode{
-				Name:  e.Path[len(rootPath):],
+				Name:  name,
 				Path:  e.Path,
 				Size:  e.SizeBytes,
 				IsDir: e.IsDir,
