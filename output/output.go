@@ -12,10 +12,12 @@ import (
 	"distrike/signal"
 )
 
+// ToolVersion is set from cmd.Version at init time.
+var ToolVersion = "dev"
+
 const (
-	toolName    = "distrike"
-	toolVersion = "0.1.0"
-	schemaVer   = "1.0"
+	toolName  = "distrike"
+	schemaVer = "1.0"
 )
 
 // StatusOutput is the JSON schema for distrike status.
@@ -193,7 +195,7 @@ func RenderStatus(data StatusOutput, asJSON bool) string {
 	if asJSON {
 		data.SchemaVersion = schemaVer
 		data.Tool = toolName
-		data.ToolVersion = toolVersion
+		data.ToolVersion = ToolVersion
 		data.Timestamp = now()
 		data.Platform = platform()
 		b, err := json.MarshalIndent(data, "", "  ")
@@ -230,7 +232,7 @@ func RenderScan(data ScanOutput, asJSON bool) string {
 	if asJSON {
 		data.SchemaVersion = schemaVer
 		data.Tool = toolName
-		data.ToolVersion = toolVersion
+		data.ToolVersion = ToolVersion
 		data.Timestamp = now()
 		data.Platform = platform()
 		b, err := json.MarshalIndent(data, "", "  ")
@@ -269,7 +271,7 @@ func RenderHunt(data HuntOutput, asJSON bool) string {
 	if asJSON {
 		data.SchemaVersion = schemaVer
 		data.Tool = toolName
-		data.ToolVersion = toolVersion
+		data.ToolVersion = ToolVersion
 		data.Timestamp = now()
 		data.Platform = platform()
 		b, err := json.MarshalIndent(data, "", "  ")
@@ -326,7 +328,7 @@ func RenderClean(data CleanOutput, asJSON bool) string {
 	if asJSON {
 		data.SchemaVersion = schemaVer
 		data.Tool = toolName
-		data.ToolVersion = toolVersion
+		data.ToolVersion = ToolVersion
 		data.Timestamp = now()
 		data.Platform = platform()
 		b, err := json.MarshalIndent(data, "", "  ")

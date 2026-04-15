@@ -80,7 +80,7 @@ func runWSLList(cmd *cobra.Command, args []string) error {
 		out := wslListOutput{
 			SchemaVersion: "1.0",
 			Tool:          "distrike",
-			ToolVersion:   "0.1.0",
+			ToolVersion:   Version,
 			Platform:      "windows",
 			Data:          distros,
 		}
