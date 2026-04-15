@@ -4,6 +4,11 @@ package notify
 
 import "os/exec"
 
+// SendWithPath displays a notification (openPath unused on macOS).
+func SendWithPath(title, message, openPath string) error {
+	return Send(title, message)
+}
+
 // Send displays a macOS notification via osascript.
 func Send(title, message string) error {
 	script := `display notification "` + escapeAS(message) + `" with title "` + escapeAS(title) + `"`

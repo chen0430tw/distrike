@@ -8,23 +8,35 @@ import (
 )
 
 // Send displays a Windows balloon tip notification via PowerShell.
+// If openPath is provided, clicking the notification opens that path in Explorer.
 func Send(title, message string) error {
-	// Use PowerShell with System.Windows.Forms NotifyIcon for a non-blocking balloon tip.
-	// This works on Windows 10/11 without any extra modules.
+	return SendWithPath(title, message, "")
+}
+
+// SendWithPath displays a notification. Clicking it opens the given path in Explorer.
+func SendWithPath(title, message, openPath string) error {
+	onClick := ""
+	if openPath != "" {
+		onClick = fmt.Sprintf(`
+$n.Add_BalloonTipClicked({
+    Start-Process explorer.exe -ArgumentList '%s'
+})`, escapePS(openPath))
+	}
+
 	ps := fmt.Sprintf(`
 Add-Type -AssemblyName System.Windows.Forms
 $n = New-Object System.Windows.Forms.NotifyIcon
 $n.Icon = [System.Drawing.SystemIcons]::Warning
 $n.Visible = $true
 $n.BalloonTipTitle = '%s'
-$n.BalloonTipText = '%s'
-$n.ShowBalloonTip(10000)
-Start-Sleep -Seconds 2
+$n.BalloonTipText = '%s'%s
+$n.ShowBalloonTip(30000)
+Start-Sleep -Seconds 10
 $n.Dispose()
-`, escapePS(title), escapePS(message))
+`, escapePS(title), escapePS(message), onClick)
 
 	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", ps)
-	return cmd.Start() // non-blocking: fire and forget
+	return cmd.Start()
 }
 
 // escapePS escapes single quotes for PowerShell string literals.

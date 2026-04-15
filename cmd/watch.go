@@ -145,7 +145,8 @@ func runWatch(cmd *cobra.Command, args []string) error {
 	iteration := 0
 	lastMemReport := time.Now()
 	currentInterval := 1 * time.Millisecond // first check immediately
-	prevWorstLevel := 0                      // track signal changes for notification
+	prevDriveLevel := make(map[string]int)   // per-drive signal tracking
+	prevDriveFree := make(map[string]int64)  // per-drive free space tracking
 	lastAutoClean := time.Time{}             // cooldown for auto-clean
 	const autoCleanCooldown = 10 * time.Minute
 
@@ -167,8 +168,6 @@ func runWatch(cmd *cobra.Command, args []string) error {
 
 			// Determine the worst signal across all drives to set next interval
 			worstLevel := 0 // 0=green, 1=yellow, 2=red, 3=purple
-			var worstDrive string
-			var worstFree int64
 
 			for _, d := range drives {
 				var usedRatio float64
@@ -201,24 +200,76 @@ func runWatch(cmd *cobra.Command, args []string) error {
 
 				if level > worstLevel {
 					worstLevel = level
-					worstDrive = d.Path
-					worstFree = d.FreeBytes
 				}
 			}
 
-			// Desktop notification when signal worsens
-			if !watchNoNotify && worstLevel > prevWorstLevel && worstLevel >= 2 {
+			// Desktop notification: find the drive that WORSENED (not just worst overall)
+			// Skip first poll — record baseline without alerting
+			if !watchNoNotify && worstLevel >= 2 && iteration > 1 {
 				levelNames := []string{"GREEN", "YELLOW", "RED", "PURPLE"}
-				title := fmt.Sprintf("Distrike: %s", levelNames[worstLevel])
-				msg := fmt.Sprintf("%s only %s free", worstDrive, units.FormatSize(worstFree))
-				if worstLevel == 3 {
-					msg += " — CRITICAL, immediate cleanup needed!"
-				} else {
-					msg += " — below kill-line, cleanup recommended"
+				// Find the non-removable drive that worsened most
+				var alertDrive string
+				var alertFree int64
+				var alertLevel int
+				for _, d := range drives {
+					var usedRatio float64
+					if d.TotalBytes > 0 {
+						usedRatio = float64(d.UsedBytes) / float64(d.TotalBytes)
+					}
+					sig := dSignal.Classify(usedRatio, 0, d.FreeBytes, killLineBytes, thresholds)
+					level := 0
+					switch sig.Light {
+					case dSignal.Purple:
+						level = 3
+					case dSignal.Red:
+						level = 2
+					case dSignal.Yellow:
+						level = 1
+					}
+					prev := prevDriveLevel[d.Path]
+					prevFree := prevDriveFree[d.Path]
+					// Trigger on: signal level worsened, OR free space dropped >50% within same level
+					freeDropped := prevFree > 0 && d.FreeBytes < prevFree/2 && level >= 2
+					if (level > prev || freeDropped) && level >= 2 {
+						// Prefer non-removable drives
+						if alertDrive == "" || (!d.Removable && level >= alertLevel) || level > alertLevel {
+							alertDrive = d.Path
+							alertFree = d.FreeBytes
+							alertLevel = level
+						}
+					}
 				}
-				_ = notify.Send(title, msg)
+				if alertDrive != "" {
+					title := fmt.Sprintf("Distrike: %s", levelNames[alertLevel])
+					msg := fmt.Sprintf("%s only %s free", alertDrive, units.FormatSize(alertFree))
+					if alertLevel == 3 {
+						msg += " — CRITICAL, immediate cleanup needed!"
+					} else {
+						msg += " — below kill-line, cleanup recommended"
+					}
+					_ = notify.SendWithPath(title, msg, alertDrive)
+				}
 			}
-			prevWorstLevel = worstLevel
+			// Update per-drive levels
+			for _, d := range drives {
+				var usedRatio float64
+				if d.TotalBytes > 0 {
+					usedRatio = float64(d.UsedBytes) / float64(d.TotalBytes)
+				}
+				sig := dSignal.Classify(usedRatio, 0, d.FreeBytes, killLineBytes, thresholds)
+				level := 0
+				switch sig.Light {
+				case dSignal.Purple:
+					level = 3
+				case dSignal.Red:
+					level = 2
+				case dSignal.Yellow:
+					level = 1
+				}
+				prevDriveLevel[d.Path] = level
+				prevDriveFree[d.Path] = d.FreeBytes
+			}
+			// worstLevel used for adaptive interval below
 
 			// Auto-clean on RED/PURPLE (with cooldown to avoid spamming)
 			if watchAutoClean && worstLevel >= 2 && time.Since(lastAutoClean) > autoCleanCooldown {

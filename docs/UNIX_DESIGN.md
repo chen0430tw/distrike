@@ -80,6 +80,17 @@ Colors match Windows Explorer (red) and Claude Code (amber, purple) for visual c
 
 Don't mix the two styles.
 
+### Notification design
+
+Notifications must be **actionable and precise**:
+
+1. **Click opens the problem** — notification opens the affected drive in Explorer, not a generic dashboard
+2. **Track per-drive changes** — alert on the drive that WORSENED, not the globally worst drive
+3. **Detect rate of change** — a 50% free-space drop within the same signal level is as alarming as a level change (10 GB → 1.3 GB is dangerous even though both are RED)
+4. **Skip first poll** — record baseline without alerting; avoids false positives on startup
+5. **Prefer system drives** — USB drives don't steal notification focus from C:\
+6. **Stay visible** — 10 seconds minimum display time; 2 seconds is unreadable
+
 ## Anti-patterns
 
 - **Data dump**: listing every directory is `du`, not topology analysis

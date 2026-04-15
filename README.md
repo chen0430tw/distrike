@@ -169,7 +169,13 @@ Caches rebuild silently. Distrike watches for it.
 | YELLOW | 5 minutes |
 | GREEN | 15 minutes |
 
-The worse it gets, the faster it checks. Desktop notifications fire when signals worsen. `--auto-clean` triggers cleanup automatically.
+The worse it gets, the faster it checks. `--auto-clean` triggers cleanup automatically.
+
+Desktop notifications fire when:
+- A drive's signal **worsens** (e.g. YELLOW → RED)
+- Free space **drops >50%** within the same signal level (e.g. RED 10 GB → RED 1.3 GB)
+
+Click the notification to open the affected drive in Explorer. USB drives don't steal focus from system drives.
 
 ```bash
 distrike watch                # foreground
