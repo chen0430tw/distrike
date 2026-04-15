@@ -61,6 +61,7 @@ func enumerateDrives() ([]DriveInfo, error) {
 
 		total := int64(totalNumberOfBytes)
 		free := int64(totalNumberOfFreeBytes)
+		removable := driveType == windows.DRIVE_REMOVABLE
 		drives = append(drives, DriveInfo{
 			Path:       rootPath,
 			Label:      label,
@@ -68,6 +69,7 @@ func enumerateDrives() ([]DriveInfo, error) {
 			TotalBytes: total,
 			FreeBytes:  free,
 			UsedBytes:  total - free,
+			Removable:  removable,
 		})
 	}
 

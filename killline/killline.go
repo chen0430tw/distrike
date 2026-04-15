@@ -8,6 +8,7 @@ type DriveInfo struct {
 	TotalBytes int64  `json:"total_bytes"`
 	FreeBytes  int64  `json:"free_bytes"`
 	UsedBytes  int64  `json:"used_bytes"`
+	Removable  bool   `json:"removable"`
 }
 
 // EnumerateDrives returns all mounted drives/partitions.

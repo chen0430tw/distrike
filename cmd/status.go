@@ -62,6 +62,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 			FreeBytes:  d.FreeBytes,
 			UsedBytes:  d.UsedBytes,
 			Signal:     sig,
+			Removable:  d.Removable,
 		})
 	}
 

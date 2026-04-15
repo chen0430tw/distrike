@@ -38,6 +38,7 @@ type DriveOutput struct {
 	FreeBytes  int64         `json:"free_bytes"`
 	UsedBytes  int64         `json:"used_bytes"`
 	Signal     signal.Signal `json:"signal"`
+	Removable  bool          `json:"removable"`
 }
 
 // ScanOutput is the JSON schema for distrike scan.
@@ -219,11 +220,15 @@ func RenderStatus(data StatusOutput, asJSON bool) string {
 		coloredBar := signalColor(d.Signal.Light) + bar + colorReset
 		label := signalLabel(d.Signal.Light)
 		pct := fmt.Sprintf("%.1f%%", usedRatio*100)
-		sb.WriteString(fmt.Sprintf("%-6s %s %6s  %s free / %s  %s\n",
+		tag := ""
+		if d.Removable {
+			tag = " [USB]"
+		}
+		sb.WriteString(fmt.Sprintf("%-6s %s %6s  %s free / %s  %s%s\n",
 			d.Path, coloredBar, pct,
 			units.FormatSize(d.FreeBytes),
 			units.FormatSize(d.TotalBytes),
-			label,
+			label, tag,
 		))
 	}
 	sb.WriteString(fmt.Sprintf("\nSignal is based on free space, not percentage. Kill-line: %s\n",
