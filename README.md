@@ -30,23 +30,39 @@ distrike watch --install
 go install github.com/chen0430tw/distrike@latest
 
 # Or download binary from GitHub Releases
+# Check version
+distrike -v
 ```
+
+### What it does NOT touch
+
+Distrike only cleans filesystem caches and temp files. It will **never** delete:
+- Browser cookies, history, passwords, or bookmarks
+- Windows Run history or Recent files
+- Any user documents or project files
+
+## How It Works
+
+Distrike **auto-detects all mounted drives** — 1 drive or 10 drives, internal SSD or USB stick. No configuration needed. Removable drives are tagged `[USB]`.
+
+Signal is based on **free space in bytes**, not percentage — a 1 TB drive at 97% (30 GB free) is safer than a 120 GB drive at 99% (600 MB free), even though both progress bars look similar.
 
 ## Features
 
 ### Four-Color Capacity Signal (CFPAI-derived)
 
 ```
-C:\    [████████████████████░]  1.2 GB / 454 GB  DANGER      ← RED
-D:\    [████████████████░░░░░]  30 GB / 954 GB   WARNING     ← YELLOW
-E:\    [███████░░░░░░░░░░░░░░]  120 GB / 256 GB  OK          ← GREEN
+C:\    [███████████████████████████████████████░░]  98.4%  7.4 GB free / 453 GB  DANGER
+D:\    [███████████████████████████████████████░░]  97.0%  28.9 GB free / 953 GB  WARNING
+E:\    [██████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░]  24.3%  3.4 TB free / 4.5 TB  OK
+G:\    [████████████████████████████████████████]  99.5%  638 MB free / 115 GB   CRITICAL [USB]
 ```
 
 | Signal | Condition | Meaning |
 |--------|-----------|---------|
-| GREEN | Free > kill-line × 2 | Safe |
+| GREEN | Free > kill-line × 1.5 | Safe |
 | YELLOW | Approaching kill-line | Attention |
-| RED | Below kill-line | Danger, cleanup recommended |
+| RED | Below kill-line (default 20 GB) | Danger, cleanup recommended |
 | PURPLE | < 1 GB free | Critical, near exhaustion |
 
 ### 80+ Prey Identification Rules
@@ -94,10 +110,14 @@ AV-inspired real-time monitoring — adaptive polling based on danger level:
 
 ```bash
 distrike watch                # foreground monitoring
+distrike watch --auto-clean   # auto-run 'clean --risk safe' on RED/PURPLE
+distrike watch --no-notify    # disable desktop notifications
 distrike watch --install      # background service (schtasks/launchd/systemd)
 distrike watch --status       # check if running
 distrike watch --uninstall    # remove service
 ```
+
+Desktop notifications (Windows balloon tip / macOS / Linux notify-send) fire automatically when signals worsen to RED or PURPLE.
 
 ### Agent-Friendly
 
