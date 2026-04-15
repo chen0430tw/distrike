@@ -140,13 +140,32 @@ func collectVDisks() []output.VDiskEntry {
 		{"Claude VM", filepath.Join(home, "AppData", "Roaming", "Claude", "vm_bundles", "*", "*.vhdx")},
 	}
 
-	// Check all mounted drives for Docker/LDPlayer vdisks
+	// Check all mounted drives
 	driveList, _ := killline.EnumerateDrives()
 	for _, drv := range driveList {
 		d := strings.TrimRight(drv.Path, `\`)
 		probes = append(probes, probe{"Docker", d + `\Docker\DockerDesktopWSL\*\*.vhdx`})
 		probes = append(probes, probe{"LDPlayer", d + `\LDPlayer\LDPlayer*\vms\*\*.vmdk`})
 		probes = append(probes, probe{"LDPlayer", d + `\LDPlayer\LDPlayer*\*.vmdk`})
+	}
+
+	// System managed files that can grow dynamically
+	for _, drv := range driveList {
+		root := drv.Path
+		for _, sf := range []struct{ name, file string }{
+			{"pagefile.sys", "pagefile.sys"},
+			{"swapfile.sys", "swapfile.sys"},
+			{"hiberfil.sys", "hiberfil.sys"},
+		} {
+			path := filepath.Join(root, sf.file)
+			if info, err := os.Stat(path); err == nil && info.Size() > 0 {
+				results = append(results, output.VDiskEntry{
+					Name:      sf.name,
+					Path:      path,
+					SizeBytes: info.Size(),
+				})
+			}
+		}
 	}
 
 	seen := make(map[string]bool)

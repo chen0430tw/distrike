@@ -104,7 +104,7 @@ func runTopo(cmd *cobra.Command, args []string) error {
 
 	// Fallback to fastwalk if MFT unavailable
 	if root == nil {
-		fmt.Fprintf(cmd.ErrOrStderr(), "MFT unavailable, using fastwalk...\n")
+		fmt.Fprintf(cmd.ErrOrStderr(), "MFT unavailable, using fastwalk (run as Admin for full topology)...\n")
 		eng := &scanner.FastwalkEngine{}
 		scanOpts.CollectAll = true
 		r, scanErr := eng.Scan(targetPath, scanOpts)
@@ -155,10 +155,12 @@ func runTopo(cmd *cobra.Command, args []string) error {
 		units.FormatSize(result.FreeBytes),
 		sigColor, sigName, reset,
 	)
-	if sinkNode != nil {
+	if sinkNode != nil && totalSize > 0 {
 		pct := float64(sinkNode.Size) / float64(totalSize) * 100
-		fmt.Printf("  %s%s is eating %.0f%% (%s)%s\n",
-			sigColor, sinkNode.Name, pct, units.FormatSize(sinkNode.Size), reset)
+		if pct >= 3 { // only show verdict if sink is significant
+			fmt.Printf("  %s%s is eating %.0f%% (%s)%s\n",
+				sigColor, sinkNode.Name, pct, units.FormatSize(sinkNode.Size), reset)
+		}
 	}
 
 	// === Critical path ===
