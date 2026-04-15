@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 
 	"distrike/config"
 	"distrike/health"
@@ -48,8 +47,6 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		KillLineBytes: killLineBytes,
 	}
 
-	hasWarning := false
-
 	for _, d := range drives {
 		var usedRatio float64
 		if d.TotalBytes > 0 {
@@ -58,10 +55,6 @@ func runStatus(cmd *cobra.Command, args []string) error {
 
 		// Compute concentration as 0 for status (no scan data)
 		sig := signal.Classify(usedRatio, 0, d.FreeBytes, killLineBytes, thresholds)
-
-		if sig.Light == signal.Red || sig.Light == signal.Purple {
-			hasWarning = true
-		}
 
 		statusData.Drives = append(statusData.Drives, output.DriveOutput{
 			Path:       d.Path,
@@ -112,8 +105,8 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	if hasWarning {
-		os.Exit(1)
-	}
+	// Note: previously exited 1 on RED/PURPLE, but this causes confusing
+	// "Error: Exit code 1" in interactive terminals. The colored output
+	// already communicates danger clearly. Scripts can parse --json output.
 	return nil
 }
