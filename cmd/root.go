@@ -30,6 +30,10 @@ Distrike answers: "What should be cleaned? How long until danger? Is it critical
 
 func Execute() {
 	output.ToolVersion = Version
+	// Assign -v shorthand to --version (must be after cobra registers the flag)
+	if f := rootCmd.Flags().Lookup("version"); f != nil {
+		f.Shorthand = "v"
+	}
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(2)
@@ -47,7 +51,7 @@ var versionCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.PersistentFlags().BoolVar(&jsonOutput, "json", false, "output in JSON format")
-	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "verbose output")
+	rootCmd.PersistentFlags().BoolVar(&verbose, "verbose", false, "verbose output")
 	rootCmd.Version = Version
 	rootCmd.SetVersionTemplate("distrike {{.Version}}\n")
 }
