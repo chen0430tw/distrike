@@ -84,6 +84,24 @@ func (e *FastwalkEngine) Scan(path string, opts ScanOptions) (*ScanResult, error
 		Follow:     opts.FollowSymlinks,
 	}
 
+	// Live progress reporter: prints scanned file count every 2 seconds.
+	// Uses \r to overwrite the same line so it doesn't flood stderr.
+	progressDone := make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(2 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				n := atomic.LoadInt64(&scannedCount)
+				fmt.Fprintf(os.Stderr, "  %dk files scanned...\r", n/1000)
+			case <-progressDone:
+				fmt.Fprintf(os.Stderr, "                              \r") // clear line
+				return
+			}
+		}
+	}()
+
 	walkErr := fastwalk.Walk(&conf, absPath, func(entryPath string, d os.DirEntry, err error) error {
 		if err != nil {
 			// Access denied or other permission error — record and continue
@@ -186,6 +204,8 @@ func (e *FastwalkEngine) Scan(path string, opts ScanOptions) (*ScanResult, error
 
 		return nil
 	})
+
+	close(progressDone)
 
 	if walkErr != nil {
 		return nil, fmt.Errorf("scanning %s: %w", absPath, walkErr)

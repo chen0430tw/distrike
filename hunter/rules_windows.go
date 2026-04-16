@@ -291,21 +291,38 @@ func platformSpecificRules() []Rule {
 			Description: "Zoom plugin cache",
 			Action:      Action{Type: "manual", Hint: "Delete contents — Zoom re-downloads on next start"}},
 
-		// --- WeChat cache (data directories remain whitelisted in config) ---
+		// --- WeChat cache ---
 		{Pattern: "*/WeChat Files/*/Cache", Kind: KindCache, Risk: RiskSafe, Platform: "windows",
-			Description: "WeChat render cache (remove '*/WeChat Files' from config whitelist to enable)",
+			Description: "WeChat render cache",
 			Action:      Action{Type: "manual", Hint: "Delete Cache folder contents — WeChat re-downloads as needed"}},
 		{Pattern: "*/WeChat Files/*/Temp", Kind: KindTemp, Risk: RiskSafe, Platform: "windows",
 			Description: "WeChat temp files",
 			Action:      Action{Type: "manual", Hint: "Delete Temp folder contents"}},
+		// WeChat image cache — auto-saved thumbnails/previews, distinct from FileStorage (user-saved files)
+		{Pattern: "*/WeChat Files/*/Image", Kind: KindCache, Risk: RiskCaution, Platform: "windows",
+			Description: "WeChat auto-cached chat images (distinct from FileStorage — re-downloadable)",
+			Action:      Action{Type: "manual", Hint: "Delete folder — WeChat re-downloads image previews on demand. FileStorage (user-saved files) is not touched."}},
+		{Pattern: "*/WeChat Files/*/Video", Kind: KindCache, Risk: RiskCaution, Platform: "windows",
+			Description: "WeChat auto-cached chat videos",
+			Action:      Action{Type: "manual", Hint: "Delete folder — WeChat re-downloads video thumbnails/previews on demand"}},
 
 		// --- QQ / QQNT cache ---
 		{Pattern: "*/Tencent Files/*/Cache", Kind: KindCache, Risk: RiskSafe, Platform: "windows",
-			Description: "QQ render cache (remove '*/Tencent Files' from config whitelist to enable)",
+			Description: "QQ render cache",
 			Action:      Action{Type: "manual", Hint: "Delete Cache folder contents"}},
 		{Pattern: "*/Tencent/QQNT/*/Cache", Kind: KindCache, Risk: RiskSafe, Platform: "windows",
 			Description: "QQNT (new QQ) app cache",
 			Action:      Action{Type: "manual", Hint: "Delete Cache folder contents"}},
+		// QQNT media received in chat — auto-saved by QQ, re-downloadable from chat history
+		{Pattern: "*/nt_qq/nt_data/Pic", Kind: KindCache, Risk: RiskCaution, Platform: "windows",
+			Description: "QQNT auto-saved chat images (re-downloadable from chat history)",
+			Action:      Action{Type: "manual", Hint: "Delete folder — QQ will re-download images from chat history on demand"}},
+		{Pattern: "*/nt_qq/nt_data/Video", Kind: KindCache, Risk: RiskCaution, Platform: "windows",
+			Description: "QQNT auto-saved chat videos (re-downloadable from chat history)",
+			Action:      Action{Type: "manual", Hint: "Delete folder — QQ will re-download videos from chat history on demand"}},
+		{Pattern: "*/nt_qq/nt_data/Emoji", Kind: KindCache, Risk: RiskSafe, Platform: "windows",
+			Description: "QQNT emoji cache",
+			Action:      Action{Type: "manual", Hint: "Delete folder — QQ re-downloads emoji as needed"}},
 
 		// --- OBS Studio ---
 		{Pattern: "*/obs-studio/logs", Kind: KindLog, Risk: RiskSafe, Platform: "windows",

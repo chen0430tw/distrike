@@ -121,8 +121,32 @@ func matchPattern(path, pattern string) bool {
 
 	// Suffix match: "*/some/path" — check if path ends with the suffix after "*/"
 	if strings.HasPrefix(pattern, "*/") {
-		suffix := pattern[1:] // e.g., "/pip/cache"
-		return strings.HasSuffix(path, suffix) || strings.Contains(path, suffix+"/")
+		suffix := pattern[1:] // e.g., "/pip/cache" or "/Tencent Files/*/Cache"
+		// Fast path: no wildcards in suffix — plain string check.
+		if !strings.ContainsAny(suffix, "*?[") {
+			return strings.HasSuffix(path, suffix) || strings.Contains(path, suffix+"/")
+		}
+		// Suffix contains wildcards (e.g. "*/Tencent Files/*/Cache").
+		// Try filepath.Match against every possible tail of the path so that
+		// a pattern like "/Tencent Files/*/Cache" matches
+		// "C:/Users/x/Documents/Tencent Files/2304790021/Cache".
+		tail := path
+		for {
+			idx := strings.Index(tail, "/")
+			if idx < 0 {
+				break
+			}
+			candidate := tail[idx:] // starts with "/"
+			if matched, _ := filepath.Match(suffix, candidate); matched {
+				return true
+			}
+			// Also check parent-of-path (suffix+"/...") for contains-style matching.
+			if matched, _ := filepath.Match(suffix, strings.TrimRight(candidate, "/")); matched {
+				return true
+			}
+			tail = tail[idx+1:]
+		}
+		return false
 	}
 
 	// Absolute pattern or exact match: try filepath.Match on the last components.
@@ -170,9 +194,25 @@ func (m *Matcher) isWhitelisted(path string) bool {
 		// Handle "*/suffix" patterns consistently with matchPattern:
 		// "*/WeChat Files" whitelists any path that ends with or contains "/WeChat Files".
 		if strings.HasPrefix(wl, "*/") {
-			suffix := wl[1:] // e.g., "/WeChat Files"
-			if strings.HasSuffix(normalized, suffix) || strings.Contains(normalized, suffix+"/") {
-				return true
+			suffix := wl[1:] // e.g., "/WeChat Files" or "/QQNT/*/nt_db"
+			if !strings.ContainsAny(suffix, "*?[") {
+				if strings.HasSuffix(normalized, suffix) || strings.Contains(normalized, suffix+"/") {
+					return true
+				}
+			} else {
+				// Wildcard suffix — try against every tail (same logic as matchPattern).
+				tail := normalized
+				for {
+					idx := strings.Index(tail, "/")
+					if idx < 0 {
+						break
+					}
+					candidate := tail[idx:]
+					if matched, _ := filepath.Match(suffix, candidate); matched {
+						return true
+					}
+					tail = tail[idx+1:]
+				}
 			}
 			continue
 		}
