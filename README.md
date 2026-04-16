@@ -6,12 +6,22 @@
 $ distrike status
 
 C:\    [██████████████████████████████████████░░]  98.4%  7.4 GB free / 453 GB   DANGER
-D:\    [██████████████████████████████████████░░]  97.0%  28.9 GB free / 953 GB  WARNING
-E:\    [██████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░]  24.3%  3.4 TB free / 4.5 TB  OK
+D:\    [██████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░]  24.3%  3.4 TB free / 4.5 TB   OK
 G:\    [████████████████████████████████████████]  99.5%  638 MB free / 115 GB   CRITICAL [USB]
 ```
 
-One command. Every drive. Four-color signal tells you exactly where you stand.
+```
+$ distrike status   # on an HPC cluster (NCHC Taiwania-3 / TWCC)
+
+/              [████████░░░░░░░░░░░░░░░░░░░]  28.9%   154.8 GB   217.7 GB   OK[xfs]
+/boot          [██████░░░░░░░░░░░░░░░░░░░░░]  24.0%   770.2 MB   1014 MB    OK[xfs]
+/gpfs-work     [██████████████████░░░░░░░░░]  66.9%   2.5 PB     7.5 PB     OK[gpfs]
+/gpfs-home     [███████████████░░░░░░░░░░░░]  53.8%   820.2 TB   1.7 PB     OK[gpfs]
+/home          [██░░░░░░░░░░░░░░░░░░░░░░░░░]   7.3%   12.4 PB    13.4 PB    OK[nfs]
+/work          [███████████░░░░░░░░░░░░░░░░]  39.7%   8.1 PB     13.4 PB    OK[nfs]
+```
+
+One command. Every drive — from USB sticks to petabyte GPFS clusters. Four-color signal tells you exactly where you stand.
 
 ## Install
 
@@ -19,7 +29,7 @@ One command. Every drive. Four-color signal tells you exactly where you stand.
 go install github.com/chen0430tw/distrike@latest
 ```
 
-Or grab `distrike.exe` from [Releases](https://github.com/chen0430tw/distrike/releases). One binary, no dependencies.
+Or grab the binary from [Releases](https://github.com/chen0430tw/distrike/releases). Single static binary, no dependencies, no daemon required.
 
 > **Windows SmartScreen?** Run `Unblock-File distrike.exe` in PowerShell, or right-click → Properties → Unblock.
 
@@ -37,26 +47,108 @@ distrike watch --install             # never get surprised again
 
 ## What it sees
 
-80+ rules across every major cache, temp, and bloat source:
+190+ rules across every major cache, temp, and bloat source:
 
 | | |
 |---|---|
-| **Caches** | pip, npm, cargo, conda, gradle, HuggingFace, Homebrew |
-| **Browsers** | Chrome, Edge, Firefox — cache only, never cookies or history |
-| **IDEs** | VS Code, JetBrains — caches, index, logs |
-| **Apps** | Discord, Slack, Teams, LINE, Telegram, Spotify |
+| **Caches** | pip, conda, npm, yarn, cargo, Go modules, Maven, Gradle, ccache |
+| **AI / ML** | HuggingFace hub, PyTorch hub, TensorFlow, Singularity/Apptainer images |
+| **Browsers** | Chrome, Edge, Firefox, Brave — cache only, never cookies or history |
+| **IDEs** | VS Code, JetBrains, vim, emacs |
+| **Apps** | Discord, Zoom, WeChat, QQ, OBS, Notepad++ |
+| **Containers** | Docker, Podman, Singularity/Apptainer |
 | **Virtual disks** | VHDX, VMDK, VDI — detect and compact |
-| **System** | Windows Update, Temp, crash dumps, prefetch |
-| **Creative** | Adobe Media Cache |
+| **System** | Windows Update, Temp, crash dumps, WER reports, Windows.old |
 | **Gaming** | Steam shader cache, Epic Vault |
+| **HPC** | CUDA kernel cache, NVIDIA shader cache, AMD shader cache |
 
 Every item is risk-rated. SAFE cleans automatically. CAUTION asks first. DANGER is manual only.
+
+Items marked `[cosmetic]` (thumbnail cache, font cache, etc.) are kept in the list for completeness but flagged — cleaning them has negligible real-world impact.
+
+## HPC & Training Cluster Support
+
+Distrike runs as a single static binary on any Linux node — no install, no root required.
+
+```bash
+# Upload once, run anywhere
+scp distrike_linux user@cluster:/work/user/distrike
+
+# Check all cluster filesystems at a glance
+./distrike status
+
+# Find what's silently eating your quota
+./distrike hunt /home/user
+./distrike hunt /work/user
+```
+
+**First run on NCHC Taiwania-3** found 31.1 GB recoverable immediately:
+
+```
+[SAFE]  26.2 GB  /home/user/.singularity/cache
+  Kind: cache  Description: Singularity image layer cache
+  Cleanup: singularity cache clean --force
+
+[SAFE]   4.9 GB  /home/user/.cache/pip
+  Kind: cache  Description: pip wheel/package download cache
+  Cleanup: pip cache purge
+
+Total: 2 prey, 31.1 GB reclaimable
+```
+
+### Model weight inventory
+
+Training runs accumulate checkpoints. Enable model weight scanning to audit them:
+
+```bash
+distrike config set hunt.scan_model_weights true
+distrike hunt /work/user
+```
+
+```
+[CAUTION]  708 MB  /work/user/qc20k_vb_full/checkpoint_step_20000.pt
+[CAUTION]  708 MB  /work/user/qc20k_plain_full/checkpoint_step_20000.pt
+[CAUTION]  516 MB  /work/user/qc20k_transformer_vb/checkpoint_step_20000.pt
+...
+Total: 16 prey, 6.2 GB  — training checkpoints across experiment directories
+```
+
+Detects: `.safetensors` `.gguf` `.ggml` `.pt` `.pth` `.ckpt` `.h5` `.hdf5` `.onnx` `.pb`
+
+CAUTION-rated — Distrike reports them, never auto-deletes.
+
+### Filesystem awareness
+
+Distrike identifies filesystem type in the signal column and adapts signal thresholds:
+
+| Filesystem | Seen on | Notes |
+|---|---|---|
+| `gpfs` | IBM Spectrum Scale clusters | PB-scale shared storage |
+| `wekafs` | Weka HPC clusters | High-perf NVMe-over-fabric |
+| `nfs` | Most clusters | Quota management critical |
+| `xfs` | Linux compute nodes | Default HPC OS filesystem |
+| `vfat` | /boot/efi | Small system partition — no false CRITICAL |
+| `tmpfs` | /dev/shm, fake mounts | Visible when user-created |
+| `ReFS` | Windows Server | fastwalk engine, no MFT |
+
+Small system partitions (`/boot`, `/boot/efi`) never trigger false CRITICAL signals — thresholds scale with partition size.
+
+### What HPC users typically recover
+
+| Source | Typical size | Notes |
+|---|---|---|
+| Singularity/Apptainer cache | 5–50 GB | Container image layers, re-downloadable |
+| HuggingFace hub cache | 10–200 GB | Model weights, re-downloadable |
+| PyTorch hub cache | 1–50 GB | Pre-trained models |
+| pip cache | 500 MB–5 GB | Wheel files, always regenerable |
+| conda pkgs | 2–10 GB | Package tarballs after env creation |
+| Old training checkpoints | 500 MB–50 GB | `.pt`/`.ckpt` from abandoned runs |
 
 ## What it never touches
 
 - Cookies, browsing history, saved passwords, bookmarks
 - Windows Run history, Recent files, jump lists
-- Your documents, projects, or source code
+- Your documents, projects, source code, or model weights (unless you explicitly enable `scan_model_weights`)
 
 ## Why the signal isn't based on percentage
 
@@ -70,6 +162,8 @@ Distrike uses **absolute free space** against a kill-line threshold:
 | **RED** | < kill-line (default 20 GB) | Cleanup now |
 | **YELLOW** | < kill-line × 1.5 | Attention |
 | **GREEN** | Above threshold | Safe |
+
+Small partitions (total < kill-line) use proportional thresholds instead, so `/boot/efi` with 194 MB free out of 200 MB shows **OK**, not CRITICAL.
 
 ### Why 20 GB is the default kill-line
 
@@ -124,6 +218,8 @@ Three engines. Automatic selection.
 | **Cache** | Instant | — | Previous scan |
 
 The MFT engine reads the NTFS Master File Table directly — same technique antivirus and forensic tools use. Custom binary parser, 1 MB batch I/O, parallel pipeline. It sees everything including `hiberfil.sys` and system-hidden files.
+
+**ReFS volumes** are automatically detected and always use fastwalk — ReFS has no MFT or USN Journal. Distrike prints a note when this happens.
 
 ## Topology analysis (`topo`)
 
@@ -207,6 +303,7 @@ distrike clean --risk safe --yes --json
 
 ```bash
 distrike config set kill_line 30GB
+distrike config set hunt.scan_model_weights true   # enable model weight inventory
 distrike config whitelist add "D:\MyProject"
 ```
 
@@ -234,17 +331,23 @@ Config: `%APPDATA%\distrike\config.yaml` (Windows) / `~/.config/distrike/config.
 
 ## Platforms
 
-| | MFT engine | Watch service |
-|---|:---:|---|
-| **Windows 10/11** | Yes | schtasks |
-| **Linux / WSL2** | — | systemd |
-| **macOS** | — | launchd |
+| | MFT engine | Watch service | Notes |
+|---|:---:|---|---|
+| **Windows 10/11** | Yes | schtasks | Full feature set |
+| **Linux / WSL2** | — | systemd | HPC clusters, servers |
+| **macOS** | — | launchd | |
+
+Tested on:
+- NCHC Taiwania-3 (wekafs, H100/H200, Slurm)
+- TWCC Taiwania-2 (gpfs/nfs, V100, Slurm)
+- Standard Ubuntu/Debian servers
+- WSL2 (ext4 inside VHDX)
 
 ## Under the hood
 
 Built on [Tensorearch](https://github.com/chen0430tw/Tensorearch) topology graph architecture — directory trees as node-edge-weight propagation networks.
 
-- **Signal**: CFPAI four-light risk classification
+- **Signal**: CFPAI four-light risk classification with small-partition correction
 - **MFT engine**: Möbius ring + OPU batch I/O + Cardinal Bitset index ([paper](docs/cardinal_bitset.pdf))
 - **Language**: Go (selected via Tree Diagram analysis, score 0.917)
 - **Cache**: SQLite, pure Go, no CGO
@@ -254,7 +357,7 @@ Built on [Tensorearch](https://github.com/chen0430tw/Tensorearch) topology graph
 
 Cleaned 33.7 GB manually. Three days later, C: was full again — QQ wrote 15.6 GB, Claude VM grew 9.3 GB, caches rebuilt silently.
 
-Built Distrike so it never happens again.
+Built Distrike so it never happens again. Then took it to a training cluster and found 31 GB of Singularity cache on the first scan.
 
 ## License
 
