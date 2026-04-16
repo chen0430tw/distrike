@@ -996,15 +996,28 @@ func DefaultConfig() *Config {
 			ConcentrationTopN: 10,
 		},
 		Health: HealthConfig{Enabled: true},
+		// Whitelist principle: protect ONLY data that has no copy elsewhere and
+		// cannot be recovered if deleted. Re-downloadable caches (chat images,
+		// video previews) are NOT whitelisted — they appear as CAUTION prey so
+		// users can make an informed decision. Hiding them denies users the
+		// information they need and prevents them from learning the cost.
+		//
+		// Criterion: is there a server-side copy?
+		//   nt_db / Msg databases → local-only, unrecoverable → whitelist ✅
+		//   FileRecv / FileStorage → user explicitly saved → whitelist ✅
+		//   nt_data/Pic, Video → QQ/WeChat server backup exists → CAUTION, not whitelist
 		Whitelist: []string{
-			// WeChat — protect actual message/media data, allow cache dirs to be detected
-			"*/WeChat Files/*/Msg",         // WeChat message databases (MsgAttach, Multi)
-			"*/WeChat Files/*/FileStorage", // WeChat received media (images/video) — user content
-			"*/WeChat Files/*/BackupFiles", // WeChat chat backups
-			// QQ / QQNT — protect message databases and received files
-			"*/Tencent Files/*/FileRecv",   // QQ received files — user content
-			"*/Tencent Files/*/Msg3.0.db",  // QQ classic message database
-			"*/QQNT/*/nt_db",              // QQNT message database
+			// WeChat — message data and user-saved files only
+			"*/WeChat Files/*/Msg",         // message databases (MsgAttach, Multi) — local only
+			"*/WeChat Files/*/FileStorage", // files the user explicitly saved — local only
+			"*/WeChat Files/*/BackupFiles", // chat backups — local only
+			// QQ / QQNT — message databases and explicitly received files only
+			"*/Tencent Files/*/FileRecv",   // files user explicitly received/saved — local only
+			"*/Tencent Files/*/Msg3.0.db",  // classic QQ message database — local only
+			"*/QQNT/*/nt_db",              // QQNT message database — local only
+			// NOT whitelisted (server-side copy exists, shown as CAUTION prey):
+			//   nt_data/Pic, nt_data/Video, nt_data/Emoji
+			//   WeChat Files/*/Image, WeChat Files/*/Video
 		},
 		Scan: ScanConfig{
 			MaxDepth: 3, MinSize: "100MB", Top: 20,
