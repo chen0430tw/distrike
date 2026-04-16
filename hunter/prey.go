@@ -13,6 +13,7 @@ const (
 	KindDownload PreyKind = "download"
 	KindOrphan   PreyKind = "orphan"
 	KindLog      PreyKind = "log"
+	KindModel    PreyKind = "model" // large model weight files (.safetensors, .gguf, .pt, etc.)
 )
 
 // Risk indicates how safe it is to clean this prey.

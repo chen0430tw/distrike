@@ -139,14 +139,15 @@ func (e *FastwalkEngine) Scan(path string, opts ScanOptions) (*ScanResult, error
 			}
 		}
 
-		// CollectAll: record directories + virtual disk files for hunt rule matching
+		// CollectAll: record directories + virtual disk files + extra file extensions for hunt rule matching
 		if opts.CollectAll {
 			isVDisk := !d.IsDir() && isVDiskExt(baseName)
-			if d.IsDir() || isVDisk {
+			isExtraFile := !d.IsDir() && hasCollectExt(baseName, opts.CollectFileExts)
+			if d.IsDir() || isVDisk || isExtraFile {
 				allDirsMu.Lock()
 				allDirs = append(allDirs, DirEntry{
 					Path:         entryPath,
-					SizeBytes:    fileSize, // non-zero for vdisk files
+					SizeBytes:    fileSize,
 					IsDir:        d.IsDir(),
 					LastModified: modTime,
 				})
@@ -246,6 +247,17 @@ func (e *FastwalkEngine) Scan(path string, opts ScanOptions) (*ScanResult, error
 func isVDiskExt(name string) bool {
 	for _, ext := range []string{".vhdx", ".vmdk", ".vdi", ".qcow2"} {
 		if strings.HasSuffix(name, ext) {
+			return true
+		}
+	}
+	return false
+}
+
+// hasCollectExt checks if a filename matches any of the extra collection extensions.
+func hasCollectExt(name string, exts []string) bool {
+	lower := strings.ToLower(name)
+	for _, ext := range exts {
+		if strings.HasSuffix(lower, strings.ToLower(ext)) {
 			return true
 		}
 	}

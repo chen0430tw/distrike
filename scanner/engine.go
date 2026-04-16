@@ -19,7 +19,8 @@ type ScanOptions struct {
 	FollowSymlinks bool
 	Workers        int
 	Exclude        []string
-	CollectAll     bool      // When true, collect all directories (not just top-level). Used by hunt.
+	CollectAll     bool     // When true, collect all directories (not just top-level). Used by hunt.
+	CollectFileExts []string // Extra file extensions to collect individually (e.g. ".pt", ".safetensors").
 	AfterTime      time.Time // Only count files modified after this time (zero = no filter).
 	BeforeTime     time.Time // Only count files modified before this time (zero = no filter).
 }

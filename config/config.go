@@ -119,6 +119,7 @@ type HuntConfig struct {
 	DefaultRiskFilter string          `yaml:"default_risk_filter"`
 	MinPreySize       string          `yaml:"min_prey_size"`
 	Categories        map[string]bool `yaml:"categories"`
+	ScanModelWeights  bool            `yaml:"scan_model_weights"`
 }
 
 type CleanConfig struct {
@@ -506,6 +507,8 @@ func setHunt(h *HuntConfig, key, value string) error {
 			return fmt.Errorf("invalid size %q: %w", value, err)
 		}
 		h.MinPreySize = value
+	case "scan_model_weights":
+		h.ScanModelWeights = parseBool(value)
 	default:
 		return fmt.Errorf("unknown hunt key: %q", key)
 	}
@@ -520,6 +523,8 @@ func getHunt(h *HuntConfig, key string) (string, error) {
 		return h.DefaultRiskFilter, nil
 	case "min_prey_size":
 		return h.MinPreySize, nil
+	case "scan_model_weights":
+		return strconv.FormatBool(h.ScanModelWeights), nil
 	default:
 		return "", fmt.Errorf("unknown hunt key: %q", key)
 	}
@@ -1008,9 +1013,10 @@ func DefaultConfig() *Config {
 				"/proc", "/sys", "/dev", "/run"},
 		},
 		Cache:  CacheConfig{Enabled: true, TTL: "1h", Path: "auto", MaxSize: "100MB"},
-		Hunt:   HuntConfig{BuiltinRules: true, DefaultRiskFilter: "all", MinPreySize: "50MB",
+		Hunt: HuntConfig{BuiltinRules: true, DefaultRiskFilter: "all", MinPreySize: "50MB",
+			ScanModelWeights: false,
 			Categories: map[string]bool{"cache": true, "temp": true, "vdisk": true,
-				"backup": true, "download": true, "orphan": true, "log": true}},
+				"backup": true, "download": true, "orphan": true, "log": true, "model": false}},
 		Clean:  CleanConfig{Confirm: true, VerifyAfterClean: true, History: true, MaxHistory: 100},
 		Docker: DockerConfig{Enabled: true, Executable: "auto", StoppedThreshold: "7d"},
 		WSL:    WSLConfig{Enabled: true, DetectVHDX: true, SparseSuggestThreshold: "10GB", AutoFSTrim: true},

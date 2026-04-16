@@ -83,16 +83,25 @@ func runHunt(cmd *cobra.Command, args []string) error {
 	if huntDepth < 10 {
 		huntDepth = 10
 	}
+	var collectExts []string
+	if cfg.Hunt.ScanModelWeights {
+		collectExts = []string{
+			".safetensors", ".gguf", ".ggml",
+			".pt", ".pth", ".ckpt",
+			".h5", ".hdf5", ".onnx", ".pb",
+		}
+	}
 	scanOpts := scanner.ScanOptions{
-		MaxDepth:       huntDepth,
-		MinSize:        minScanSize,
-		TopN:           500, // scan more for hunting
-		FollowSymlinks: cfg.Scan.FollowSymlinks,
-		Workers:        cfg.Scan.Workers,
-		Exclude:        cfg.Scan.Exclude,
-		CollectAll:     true, // collect all dirs, not just top-level
-		AfterTime:      afterTime,
-		BeforeTime:     beforeTime,
+		MaxDepth:        huntDepth,
+		MinSize:         minScanSize,
+		TopN:            500, // scan more for hunting
+		FollowSymlinks:  cfg.Scan.FollowSymlinks,
+		Workers:         cfg.Scan.Workers,
+		Exclude:         cfg.Scan.Exclude,
+		CollectAll:      true, // collect all dirs, not just top-level
+		CollectFileExts: collectExts,
+		AfterTime:       afterTime,
+		BeforeTime:      beforeTime,
 	}
 
 	// Collect all entries from scans
@@ -120,6 +129,9 @@ func runHunt(cmd *cobra.Command, args []string) error {
 	var rules []hunter.Rule
 	if cfg.Hunt.BuiltinRules {
 		rules = append(rules, hunter.BuiltinRules()...)
+	}
+	if cfg.Hunt.ScanModelWeights {
+		rules = append(rules, hunter.ModelWeightRules()...)
 	}
 
 	// Match entries against rules

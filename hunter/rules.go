@@ -22,6 +22,73 @@ func BuiltinRules() []Rule {
 	return rules
 }
 
+// ModelWeightRules returns rules for detecting large model weight files.
+// These are NOT included in BuiltinRules — enabled via hunt.scan_model_weights = true.
+func ModelWeightRules() []Rule {
+	return []Rule{
+		// ── File-extension rules (matches any file with this extension) ──────
+
+		// safetensors — HuggingFace standard format, always model weights
+		{Pattern: "*.safetensors", Kind: KindModel, Risk: RiskCaution, Platform: "all",
+			Description: "HuggingFace safetensors model weight file",
+			Action:      Action{Type: "manual", Hint: "Verify model is no longer needed before deleting"}},
+
+		// GGUF / GGML — llama.cpp quantized models (1–70 GB each)
+		{Pattern: "*.gguf", Kind: KindModel, Risk: RiskCaution, Platform: "all",
+			Description: "llama.cpp GGUF quantized model weight file",
+			Action:      Action{Type: "manual", Hint: "Verify model is no longer needed before deleting"}},
+		{Pattern: "*.ggml", Kind: KindModel, Risk: RiskCaution, Platform: "all",
+			Description: "llama.cpp GGML model weight file (legacy format)",
+			Action:      Action{Type: "manual", Hint: "Verify model is no longer needed before deleting"}},
+
+		// PyTorch weights / checkpoints
+		{Pattern: "*.pt", Kind: KindModel, Risk: RiskCaution, Platform: "all",
+			Description: "PyTorch model weight or checkpoint file",
+			Action:      Action{Type: "manual", Hint: "Check if this is a training checkpoint or final weights"}},
+		{Pattern: "*.pth", Kind: KindModel, Risk: RiskCaution, Platform: "all",
+			Description: "PyTorch model state dict file",
+			Action:      Action{Type: "manual", Hint: "Check if this is a training checkpoint or final weights"}},
+
+		// TensorFlow / Keras / Lightning checkpoints
+		{Pattern: "*.ckpt", Kind: KindModel, Risk: RiskCaution, Platform: "all",
+			Description: "TensorFlow/PyTorch Lightning checkpoint file",
+			Action:      Action{Type: "manual", Hint: "Keep latest checkpoint; remove older ones if training is done"}},
+		{Pattern: "*.h5", Kind: KindModel, Risk: RiskCaution, Platform: "all",
+			Description: "Keras/HDF5 model weight file",
+			Action:      Action{Type: "manual", Hint: "Verify model is no longer needed before deleting"}},
+		{Pattern: "*.hdf5", Kind: KindModel, Risk: RiskCaution, Platform: "all",
+			Description: "HDF5 model weight file",
+			Action:      Action{Type: "manual", Hint: "Verify model is no longer needed before deleting"}},
+
+		// ONNX — exported inference models
+		{Pattern: "*.onnx", Kind: KindModel, Risk: RiskCaution, Platform: "all",
+			Description: "ONNX exported model file",
+			Action:      Action{Type: "manual", Hint: "Verify model is no longer needed before deleting"}},
+
+		// TensorFlow SavedModel bin shard
+		{Pattern: "*.pb", Kind: KindModel, Risk: RiskCaution, Platform: "all",
+			Description: "TensorFlow SavedModel / protobuf model file",
+			Action:      Action{Type: "manual", Hint: "Verify model is no longer needed before deleting"}},
+
+		// ── Directory-level rules ─────────────────────────────────────────────
+
+		// HuggingFace hub snapshot dirs (each snapshot is one model version)
+		{Pattern: "*/snapshots", Kind: KindModel, Risk: RiskCaution, Platform: "all",
+			Description: "HuggingFace hub model version snapshots (old versions safe to remove)",
+			Action:      Action{Type: "manual", Hint: "huggingface-cli delete-cache to remove unused revisions"}},
+
+		// Common checkpoint output directories from training runs
+		{Pattern: "*/checkpoints", Kind: KindModel, Risk: RiskCaution, Platform: "all",
+			Description: "Training checkpoint directory (verify training is complete before deleting)",
+			Action:      Action{Type: "manual", Hint: "Keep latest checkpoint; remove older step checkpoints"}},
+
+		// Weights-only subdirs
+		{Pattern: "*/weights", Kind: KindModel, Risk: RiskCaution, Platform: "all",
+			Description: "Model weights directory",
+			Action:      Action{Type: "manual", Hint: "Verify model is no longer needed before deleting"}},
+	}
+}
+
 func commonCacheRules() []Rule {
 	return []Rule{
 		{Pattern: "*/pip/cache", Kind: KindCache, Risk: RiskSafe, Platform: "all",
