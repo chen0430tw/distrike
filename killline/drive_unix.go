@@ -4,6 +4,7 @@ package killline
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/shirou/gopsutil/v3/disk"
@@ -92,6 +93,12 @@ func enumerateDrives() ([]DriveInfo, error) {
 			continue
 		}
 		if seenMount[p.Mountpoint] {
+			continue
+		}
+		// Skip file-level bind mounts (e.g. NVIDIA container tools like
+		// /usr/bin/nvidia-cuda-mps-control bind-mounted from the host).
+		// Real storage mount points are always directories.
+		if info, err := os.Stat(p.Mountpoint); err != nil || !info.IsDir() {
 			continue
 		}
 
