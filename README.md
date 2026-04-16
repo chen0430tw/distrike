@@ -25,13 +25,19 @@ One command. Every drive — from USB sticks to petabyte GPFS clusters. Four-col
 
 ## Install
 
+**Recommended — prebuilt binary (no Go required):**
+
+Grab the binary from [Releases](https://github.com/chen0430tw/distrike/releases). Single static binary, no dependencies, no daemon required.
+
+> **Windows SmartScreen?** Run `Unblock-File distrike.exe` in PowerShell, or right-click → Properties → Unblock.
+
+**Build from source (requires Go 1.25+):**
+
 ```bash
 go install github.com/chen0430tw/distrike@latest
 ```
 
-Or grab the binary from [Releases](https://github.com/chen0430tw/distrike/releases). Single static binary, no dependencies, no daemon required.
-
-> **Windows SmartScreen?** Run `Unblock-File distrike.exe` in PowerShell, or right-click → Properties → Unblock.
+> The `modernc.org/sqlite` dependency sets the minimum Go version at 1.25. If your system Go is older, use the prebuilt binary.
 
 ## What it does
 
