@@ -257,7 +257,7 @@ func RenderStatus(data StatusOutput, asJSON bool) string {
 	const barW = 30
 	const sigW = 22 // fits "CRITICAL[USB][ReFS]" + padding
 	const pctW = 8  // fits "100.0%" + padding
-	const maxDrvW = 18 // cap drive column; keeps total table width ~106 chars (fits 120-col terminal)
+	const maxDrvW = 36 // cap drive column; keeps total table ~126 chars (fits 132-col terminal)
 
 	// Dynamically size the drive column to the longest path, up to maxDrvW.
 	drvW := 4
