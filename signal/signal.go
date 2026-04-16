@@ -54,17 +54,30 @@ type Signal struct {
 }
 
 // Classify determines the signal light for a drive.
-func Classify(usedRatio, concentration float64, freeBytes, killLine int64, t Thresholds) Signal {
+// totalBytes is the partition total; used to avoid false positives on small
+// system partitions (e.g. /boot, /boot/efi) whose total is smaller than killLine.
+func Classify(usedRatio, concentration float64, freeBytes, totalBytes, killLine int64, t Thresholds) Signal {
 	freeBudget := float64(freeBytes) / float64(killLine)
 	riskPct := math.Min(100, usedRatio*60+concentration*40)
+
+	// freeRatio for percentage-based fallback on small partitions.
+	var freeRatio float64
+	if totalBytes > 0 {
+		freeRatio = float64(freeBytes) / float64(totalBytes)
+	}
+	// A partition is "small" when its total is below the kill-line — it can
+	// never satisfy the absolute free-space thresholds, so we require the
+	// free ratio to also be low before flagging it.
+	smallPartition := totalBytes > 0 && totalBytes < killLine
 
 	var light Light
 	switch {
 	// Hard rules: free space alone determines critical/danger signals.
 	// These fire regardless of concentration (which may be unavailable).
-	case freeBytes < 1<<30: // < 1 GB — always PURPLE
+	// For small partitions, also require low free ratio to avoid false positives.
+	case freeBytes < 1<<30 && (!smallPartition || freeRatio < 0.15): // < 1 GB — PURPLE
 		light = Purple
-	case freeBytes < killLine: // < kill-line — always RED
+	case freeBytes < killLine && (!smallPartition || freeRatio < 0.10): // < kill-line — RED
 		light = Red
 	// Soft rules: combined ratio + concentration for early warning.
 	case usedRatio > t.PurpleUsedRatio && concentration > t.PurpleConcentration && freeBudget < 1.0:

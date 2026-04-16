@@ -257,8 +257,23 @@ func RenderStatus(data StatusOutput, asJSON bool) string {
 	const barW = 30
 	const sigW = 22 // fits "CRITICAL[USB][ReFS]" + padding
 	const pctW = 8  // fits "100.0%" + padding
-	// Columns: Drive(6) | Bar(barW+1) | Used%(pctW) | Free(10) | Total(10) | Signal(sigW)
-	w := 6 + 1 + barW + 1 + 1 + pctW + 1 + 10 + 1 + 10 + 1 + sigW
+	const maxDrvW = 18 // cap drive column; keeps total table width ~106 chars (fits 120-col terminal)
+
+	// Dynamically size the drive column to the longest path, up to maxDrvW.
+	drvW := 4
+	for _, d := range data.Drives {
+		p := strings.TrimRight(d.Path, `\`)
+		if len(p) > drvW {
+			drvW = len(p)
+		}
+	}
+	if drvW > maxDrvW {
+		drvW = maxDrvW
+	}
+	drvCol := drvW + 2 // +2 for border spaces
+
+	// Columns: Drive(drvCol) | Bar(barW+1) | Used%(pctW) | Free(10) | Total(10) | Signal(sigW)
+	w := drvCol + 1 + barW + 1 + 1 + pctW + 1 + 10 + 1 + 10 + 1 + sigW
 
 	var sb strings.Builder
 
@@ -271,10 +286,10 @@ func RenderStatus(data StatusOutput, asJSON bool) string {
 	}
 	sb.WriteString("╭" + strings.Repeat("─", w) + "╮\n")
 	sb.WriteString("│" + title + strings.Repeat(" ", padding) + killStr + "│\n")
-	sb.WriteString("├" + strings.Repeat("─", 6) + "┬" + strings.Repeat("─", barW+1) + "┬" + strings.Repeat("─", pctW) + "┬" + strings.Repeat("─", 10) + "┬" + strings.Repeat("─", 10) + "┬" + strings.Repeat("─", sigW) + "┤\n")
-	sb.WriteString(fmt.Sprintf("│ %-4s │ %-*s │ %6s │ %8s │ %8s │ %-*s│\n",
-		"Drv", barW-1, "Usage", "Used%", "Free", "Total", sigW-1, "Signal"))
-	sb.WriteString("├" + strings.Repeat("─", 6) + "┼" + strings.Repeat("─", barW+1) + "┼" + strings.Repeat("─", pctW) + "┼" + strings.Repeat("─", 10) + "┼" + strings.Repeat("─", 10) + "┼" + strings.Repeat("─", sigW) + "┤\n")
+	sb.WriteString("├" + strings.Repeat("─", drvCol) + "┬" + strings.Repeat("─", barW+1) + "┬" + strings.Repeat("─", pctW) + "┬" + strings.Repeat("─", 10) + "┬" + strings.Repeat("─", 10) + "┬" + strings.Repeat("─", sigW) + "┤\n")
+	sb.WriteString(fmt.Sprintf("│ %-*s │ %-*s │ %6s │ %8s │ %8s │ %-*s│\n",
+		drvW, "Drv", barW-1, "Usage", "Used%", "Free", "Total", sigW-1, "Signal"))
+	sb.WriteString("├" + strings.Repeat("─", drvCol) + "┼" + strings.Repeat("─", barW+1) + "┼" + strings.Repeat("─", pctW) + "┼" + strings.Repeat("─", 10) + "┼" + strings.Repeat("─", 10) + "┼" + strings.Repeat("─", sigW) + "┤\n")
 
 	// Drive rows — manual assembly to avoid ANSI codes breaking fmt width
 	for _, d := range data.Drives {
@@ -296,13 +311,15 @@ func RenderStatus(data StatusOutput, asJSON bool) string {
 		}
 		paddedSig := fmt.Sprintf("%-*s", sigW-1, sigText)
 
-		drv := fmt.Sprintf("%-4s", strings.TrimRight(d.Path, `\`))
+		// Truncate path if it exceeds the column width.
+		path := strings.TrimRight(d.Path, `\`)
+		drv := fmt.Sprintf("%-*s", drvW, shortenPath(path, drvW))
 		c := signalColor(d.Signal.Light)
 
 		sb.WriteString("│ " + drv + " │ " + c + bar + colorReset + " │ " + pct + " │ " + free + " │ " + total + " │ " + c + paddedSig + colorReset + "│\n")
 	}
 
-	sb.WriteString("╰" + strings.Repeat("─", 6) + "┴" + strings.Repeat("─", barW+1) + "┴" + strings.Repeat("─", pctW) + "┴" + strings.Repeat("─", 10) + "┴" + strings.Repeat("─", 10) + "┴" + strings.Repeat("─", sigW) + "╯\n")
+	sb.WriteString("╰" + strings.Repeat("─", drvCol) + "┴" + strings.Repeat("─", barW+1) + "┴" + strings.Repeat("─", pctW) + "┴" + strings.Repeat("─", 10) + "┴" + strings.Repeat("─", 10) + "┴" + strings.Repeat("─", sigW) + "╯\n")
 
 	// Virtual disks section
 	if len(data.VDisks) > 0 {

@@ -69,7 +69,7 @@ func runTopo(cmd *cobra.Command, args []string) error {
 			if d.TotalBytes > 0 {
 				r = float64(d.UsedBytes) / float64(d.TotalBytes)
 			}
-			sig := signal.Classify(r, 0, d.FreeBytes, killLineBytes, thresholds)
+			sig := signal.Classify(r, 0, d.FreeBytes, d.TotalBytes, killLineBytes, thresholds)
 			lvl := topoSignalLevel(sig.Light)
 			if lvl > worstAny {
 				worstAny = lvl
@@ -141,7 +141,7 @@ func runTopo(cmd *cobra.Command, args []string) error {
 	if result.TotalBytes > 0 {
 		usedRatio = float64(result.UsedBytes) / float64(result.TotalBytes)
 	}
-	sig := signal.Classify(usedRatio, 0, result.FreeBytes, killLineBytes, thresholds)
+	sig := signal.Classify(usedRatio, 0, result.FreeBytes, result.TotalBytes, killLineBytes, thresholds)
 
 	// Color codes
 	const reset = "\033[0m"

@@ -175,7 +175,7 @@ func runWatch(cmd *cobra.Command, args []string) error {
 					usedRatio = float64(d.UsedBytes) / float64(d.TotalBytes)
 				}
 
-				sig := dSignal.Classify(usedRatio, 0, d.FreeBytes, killLineBytes, thresholds)
+				sig := dSignal.Classify(usedRatio, 0, d.FreeBytes, d.TotalBytes, killLineBytes, thresholds)
 
 				ts := time.Now().Format("15:04:05")
 				yellowLine := int64(float64(killLineBytes) * 1.5)
@@ -216,7 +216,7 @@ func runWatch(cmd *cobra.Command, args []string) error {
 					if d.TotalBytes > 0 {
 						usedRatio = float64(d.UsedBytes) / float64(d.TotalBytes)
 					}
-					sig := dSignal.Classify(usedRatio, 0, d.FreeBytes, killLineBytes, thresholds)
+					sig := dSignal.Classify(usedRatio, 0, d.FreeBytes, d.TotalBytes, killLineBytes, thresholds)
 					level := 0
 					switch sig.Light {
 					case dSignal.Purple:
@@ -256,7 +256,7 @@ func runWatch(cmd *cobra.Command, args []string) error {
 				if d.TotalBytes > 0 {
 					usedRatio = float64(d.UsedBytes) / float64(d.TotalBytes)
 				}
-				sig := dSignal.Classify(usedRatio, 0, d.FreeBytes, killLineBytes, thresholds)
+				sig := dSignal.Classify(usedRatio, 0, d.FreeBytes, d.TotalBytes, killLineBytes, thresholds)
 				level := 0
 				switch sig.Light {
 				case dSignal.Purple:

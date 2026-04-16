@@ -58,7 +58,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		}
 
 		// Compute concentration as 0 for status (no scan data)
-		sig := signal.Classify(usedRatio, 0, d.FreeBytes, killLineBytes, thresholds)
+		sig := signal.Classify(usedRatio, 0, d.FreeBytes, d.TotalBytes, killLineBytes, thresholds)
 
 		statusData.Drives = append(statusData.Drives, output.DriveOutput{
 			Path:       d.Path,
