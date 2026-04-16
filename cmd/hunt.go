@@ -139,6 +139,29 @@ func runHunt(cmd *cobra.Command, args []string) error {
 	matcher := hunter.NewMatcher(rules, cfg.Whitelist, minPreySize)
 	prey := matcher.Match(allEntries)
 
+	// MSCM-based app discovery: find known apps in non-standard install locations
+	// (e.g. D:\软件\Chrome\ instead of Program Files\Google\Chrome\).
+	// Runs after rule matching to avoid double-counting, then deduplicates.
+	var appDiscDirs []string
+	seen := make(map[string]bool)
+	for _, p := range prey {
+		seen[p.Path] = true
+	}
+	for _, e := range allEntries {
+		if e.IsDir {
+			appDiscDirs = append(appDiscDirs, e.Path)
+		}
+	}
+	if len(appDiscDirs) > 0 {
+		discovered := hunter.AppDiscover(appDiscDirs, minPreySize)
+		for _, d := range discovered {
+			if !seen[d.Path] {
+				seen[d.Path] = true
+				prey = append(prey, d)
+			}
+		}
+	}
+
 	// Detect Docker if enabled
 	if cfg.Docker.Enabled {
 		dd := &hunter.DockerDetector{}
