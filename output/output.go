@@ -42,6 +42,7 @@ type StatusOutput struct {
 // DriveOutput is the per-drive section of status output.
 type DriveOutput struct {
 	Path       string        `json:"path"`
+	FSType     string        `json:"fs_type,omitempty"`
 	TotalBytes int64         `json:"total_bytes"`
 	FreeBytes  int64         `json:"free_bytes"`
 	UsedBytes  int64         `json:"used_bytes"`
@@ -254,7 +255,7 @@ func RenderStatus(data StatusOutput, asJSON bool) string {
 	}
 
 	const barW = 30
-	const sigW = 15 // fits "CRITICAL[USB]" + padding
+	const sigW = 22 // fits "CRITICAL[USB][ReFS]" + padding
 	const pctW = 8  // fits "100.0%" + padding
 	// Columns: Drive(6) | Bar(barW+1) | Used%(pctW) | Free(10) | Total(10) | Signal(sigW)
 	w := 6 + 1 + barW + 1 + 1 + pctW + 1 + 10 + 1 + 10 + 1 + sigW
@@ -289,6 +290,9 @@ func RenderStatus(data StatusOutput, asJSON bool) string {
 		sigText := signalName(d.Signal.Light)
 		if d.Removable {
 			sigText += "[USB]"
+		}
+		if d.FSType != "" && !strings.EqualFold(d.FSType, "NTFS") {
+			sigText += "[" + d.FSType + "]"
 		}
 		paddedSig := fmt.Sprintf("%-*s", sigW-1, sigText)
 
@@ -376,8 +380,12 @@ func RenderHunt(data HuntOutput, asJSON bool) string {
 
 	for _, p := range data.Data.Prey {
 		tag := riskTag(p.Risk)
-		sb.WriteString(fmt.Sprintf("%s  %s  %s\n", tag,
-			units.FormatSize(p.SizeBytes), p.Path))
+		cosmeticTag := ""
+		if p.Cosmetic {
+			cosmeticTag = " [cosmetic]"
+		}
+		sb.WriteString(fmt.Sprintf("%s  %s  %s%s\n", tag,
+			units.FormatSize(p.SizeBytes), p.Path, cosmeticTag))
 		sb.WriteString(fmt.Sprintf("  Kind: %s  Description: %s\n", p.Kind, p.Description))
 		if p.Action.Type == "command" {
 			sb.WriteString(fmt.Sprintf("  Cleanup: %s\n", p.Action.Command))

@@ -21,37 +21,40 @@ func isAdmin() bool {
 	return token.IsElevated()
 }
 
-// isNTFS checks whether the volume containing the given path uses the NTFS filesystem.
-func isNTFS(path string) bool {
-	// Determine volume root path (e.g. "C:\")
+// getVolumeFS returns the filesystem type string for the volume containing path
+// (e.g. "NTFS", "ReFS", "FAT32"). Returns "" on error.
+func getVolumeFS(path string) string {
 	var root string
 	if len(path) >= 2 && path[1] == ':' {
 		root = strings.ToUpper(string(path[0])) + ":\\"
 	} else {
-		return false
+		return ""
 	}
 
 	rootPtr, err := windows.UTF16PtrFromString(root)
 	if err != nil {
-		return false
+		return ""
 	}
 
 	var fsNameBuf [256]uint16
-
 	err = windows.GetVolumeInformation(
 		rootPtr,
-		nil,   // volume name buffer
-		0,     // volume name size
-		nil,   // volume serial number
-		nil,   // max component length
-		nil,   // filesystem flags
+		nil, 0, nil, nil, nil,
 		&fsNameBuf[0],
 		uint32(len(fsNameBuf)),
 	)
 	if err != nil {
-		return false
+		return ""
 	}
+	return windows.UTF16ToString(fsNameBuf[:])
+}
 
-	fsName := windows.UTF16ToString(fsNameBuf[:])
-	return strings.EqualFold(fsName, "NTFS")
+// isNTFS checks whether the volume containing the given path uses NTFS.
+func isNTFS(path string) bool {
+	return strings.EqualFold(getVolumeFS(path), "NTFS")
+}
+
+// isReFS checks whether the volume containing the given path uses ReFS.
+func isReFS(path string) bool {
+	return strings.EqualFold(getVolumeFS(path), "ReFS")
 }

@@ -53,6 +53,7 @@ func (m *Matcher) Match(entries []scanner.DirEntry) []Prey {
 				Description: rule.Description,
 				Action:      rule.Action,
 				LastAccess:  entry.LastModified,
+				Cosmetic:    rule.Cosmetic,
 			}
 			result = append(result, prey)
 		}
@@ -166,6 +167,15 @@ func (m *Matcher) isWhitelisted(path string) bool {
 	normalized := filepath.ToSlash(path)
 	for _, wl := range m.whitelist {
 		wl = filepath.ToSlash(wl)
+		// Handle "*/suffix" patterns consistently with matchPattern:
+		// "*/WeChat Files" whitelists any path that ends with or contains "/WeChat Files".
+		if strings.HasPrefix(wl, "*/") {
+			suffix := wl[1:] // e.g., "/WeChat Files"
+			if strings.HasSuffix(normalized, suffix) || strings.Contains(normalized, suffix+"/") {
+				return true
+			}
+			continue
+		}
 		// Exact match.
 		if normalized == wl {
 			return true

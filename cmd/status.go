@@ -62,6 +62,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 
 		statusData.Drives = append(statusData.Drives, output.DriveOutput{
 			Path:       d.Path,
+			FSType:     d.FSType,
 			TotalBytes: d.TotalBytes,
 			FreeBytes:  d.FreeBytes,
 			UsedBytes:  d.UsedBytes,

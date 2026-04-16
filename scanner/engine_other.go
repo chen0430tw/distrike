@@ -25,3 +25,8 @@ func isAdmin() bool {
 func isNTFS(_ string) bool {
 	return false
 }
+
+// isReFS always returns false on non-Windows.
+func isReFS(_ string) bool {
+	return false
+}

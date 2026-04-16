@@ -38,11 +38,15 @@ type ScanResult struct {
 }
 
 // SelectEngine picks the best available engine for the given path.
-// Priority: MFT (Windows Admin + NTFS) > Cache (if fresh) > fastwalk
-func SelectEngine(path string, engineHint string) Engine {
-	if engineHint == "mft" || (engineHint == "auto" && isAdmin() && isNTFS(path)) {
-		return &MFTEngine{}
+// Returns the engine and an optional note to display to the user.
+// Priority: MFT (Windows Admin + NTFS) > fastwalk
+// ReFS volumes always use fastwalk — ReFS has no MFT or USN Journal.
+func SelectEngine(path string, engineHint string) (Engine, string) {
+	if isReFS(path) {
+		return &FastwalkEngine{}, "ReFS volume detected — using fastwalk (ReFS has no MFT or USN Journal)"
 	}
-
-	return &FastwalkEngine{}
+	if engineHint == "mft" || (engineHint == "auto" && isAdmin() && isNTFS(path)) {
+		return &MFTEngine{}, ""
+	}
+	return &FastwalkEngine{}, ""
 }

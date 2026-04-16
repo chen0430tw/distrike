@@ -992,10 +992,14 @@ func DefaultConfig() *Config {
 		},
 		Health: HealthConfig{Enabled: true},
 		Whitelist: []string{
-			// IM apps with large persistent databases — users expect these to be large
-			"*/Tencent Files",   // QQ message history (can be 100GB+)
-			"*/WeChat Files",    // WeChat data
-			"*/Tencent/WeChat",  // WeChat alternative path
+			// WeChat — protect actual message/media data, allow cache dirs to be detected
+			"*/WeChat Files/*/Msg",         // WeChat message databases (MsgAttach, Multi)
+			"*/WeChat Files/*/FileStorage", // WeChat received media (images/video) — user content
+			"*/WeChat Files/*/BackupFiles", // WeChat chat backups
+			// QQ / QQNT — protect message databases and received files
+			"*/Tencent Files/*/FileRecv",   // QQ received files — user content
+			"*/Tencent Files/*/Msg3.0.db",  // QQ classic message database
+			"*/QQNT/*/nt_db",              // QQNT message database
 		},
 		Scan: ScanConfig{
 			MaxDepth: 3, MinSize: "100MB", Top: 20,

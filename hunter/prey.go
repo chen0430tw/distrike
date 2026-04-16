@@ -42,4 +42,7 @@ type Prey struct {
 	Description string    `json:"description"`
 	Action      Action    `json:"action"`
 	LastAccess  time.Time `json:"last_access,omitempty"`
+	// Cosmetic marks items that are typically <1 MB or auto-regenerate immediately.
+	// Cleaning them has negligible real-world impact (e.g. thumbnail cache, font cache).
+	Cosmetic bool `json:"cosmetic,omitempty"`
 }

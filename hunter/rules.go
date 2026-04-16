@@ -8,6 +8,9 @@ type Rule struct {
 	Platform    string   `yaml:"platform" json:"platform"`
 	Description string   `yaml:"description" json:"description"`
 	Action      Action   `yaml:"action" json:"action"`
+	// Cosmetic marks rules whose items are typically <1 MB or auto-regenerate immediately.
+	// Useful for tools like CCleaner that include these for completeness, but real impact is negligible.
+	Cosmetic bool `yaml:"cosmetic,omitempty" json:"cosmetic,omitempty"`
 }
 
 // BuiltinRules returns all built-in prey identification rules.

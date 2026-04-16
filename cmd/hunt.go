@@ -98,9 +98,12 @@ func runHunt(cmd *cobra.Command, args []string) error {
 	// Collect all entries from scans
 	var allEntries []scanner.DirEntry
 	for _, path := range paths {
-		eng := scanner.SelectEngine(path, cfg.Scan.Engine)
+		eng, engNote := scanner.SelectEngine(path, cfg.Scan.Engine)
 		if eng == nil {
 			eng = &scanner.FastwalkEngine{}
+		}
+		if engNote != "" {
+			fmt.Fprintf(cmd.ErrOrStderr(), "Note: %s\n", engNote)
 		}
 
 		fmt.Fprintf(cmd.ErrOrStderr(), "Scanning %s...\n", path)

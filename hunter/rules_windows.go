@@ -4,7 +4,7 @@ package hunter
 
 func platformSpecificRules() []Rule {
 	return []Rule{
-		// Temp
+		// --- Temp ---
 		{Pattern: "*/AppData/Local/Temp", Kind: KindTemp, Risk: RiskSafe, Platform: "windows",
 			Description: "Windows user temp files",
 			Action:      Action{Type: "manual", Hint: "Delete temp file contents"}},
@@ -119,6 +119,9 @@ func platformSpecificRules() []Rule {
 		{Pattern: "*/SoftwareDistribution/Download", Kind: KindCache, Risk: RiskSafe, Platform: "windows",
 			Description: "Windows Update download cache",
 			Action:      Action{Type: "command", Command: "sudo powershell Stop-Service wuauserv; Remove-Item C:\\Windows\\SoftwareDistribution\\Download\\* -Recurse -Force; Start-Service wuauserv"}},
+		{Pattern: "*/SoftwareDistribution/DeliveryOptimization", Kind: KindCache, Risk: RiskSafe, Platform: "windows",
+			Description: "Windows Update Delivery Optimization cache (P2P update chunks)",
+			Action:      Action{Type: "command", Command: "sudo powershell Delete-DeliveryOptimizationCache -Force"}},
 
 		// --- Game platforms ---
 		{Pattern: "*/Steam/steamapps/shadercache", Kind: KindCache, Risk: RiskSafe, Platform: "windows",
@@ -180,5 +183,143 @@ func platformSpecificRules() []Rule {
 		{Pattern: "*/Windows/SoftwareDistribution/Download", Kind: KindCache, Risk: RiskSafe, Platform: "windows",
 			Description: "Windows Update download cache",
 			Action:      Action{Type: "manual", Hint: "Stop wuauserv, delete contents, restart wuauserv"}},
+
+		// --- Thumbnail & Icon cache (火绒/CCleaner core item) ---
+		// Cosmetic: Windows regenerates thumbcache automatically on next folder browse.
+		// Only frees space from orphaned thumbnails of already-deleted files.
+		{Pattern: "*/Microsoft/Windows/Explorer", Kind: KindCache, Risk: RiskSafe, Platform: "windows",
+			Cosmetic:    true,
+			Description: "Windows thumbnail & icon cache — regenerates on next folder browse, only frees orphaned entries",
+			Action:      Action{Type: "command", Command: "sudo powershell Stop-Process -Name explorer -Force; Remove-Item $env:LOCALAPPDATA\\Microsoft\\Windows\\Explorer\\thumbcache_*.db,$env:LOCALAPPDATA\\Microsoft\\Windows\\Explorer\\iconcache_*.db -Force; Start-Process explorer"}},
+
+		// --- Font cache ---
+		// Cosmetic: FontCache service rebuilds this automatically within seconds of deletion.
+		{Pattern: "*/Microsoft/Windows/FontCache", Kind: KindCache, Risk: RiskSafe, Platform: "windows",
+			Cosmetic:    true,
+			Description: "Windows font cache — FontCache service rebuilds automatically, negligible real-world impact",
+			Action:      Action{Type: "command", Command: "sudo powershell Stop-Service FontCache; Remove-Item $env:LOCALAPPDATA\\Microsoft\\Windows\\FontCache\\* -Recurse -Force; Start-Service FontCache"}},
+
+		// --- Windows Error Reporting ---
+		{Pattern: "*/Microsoft/Windows/WER/ReportArchive", Kind: KindLog, Risk: RiskSafe, Platform: "windows",
+			Description: "Windows Error Reporting archived crash reports",
+			Action:      Action{Type: "manual", Hint: "Delete contents — archived after upload to Microsoft"}},
+		{Pattern: "*/Microsoft/Windows/WER/ReportQueue", Kind: KindLog, Risk: RiskSafe, Platform: "windows",
+			Description: "Windows Error Reporting pending crash reports (not yet uploaded)",
+			Action:      Action{Type: "manual", Hint: "Delete contents if you don't need crash diagnostics"}},
+		{Pattern: "*/ProgramData/Microsoft/Windows/WER/ReportArchive", Kind: KindLog, Risk: RiskSafe, Platform: "windows",
+			Description: "Windows Error Reporting system-wide archived crash reports",
+			Action:      Action{Type: "manual", Hint: "Delete contents — requires Administrator"}},
+
+		// --- Memory dumps ---
+		{Pattern: "*/Windows/Minidump", Kind: KindTemp, Risk: RiskSafe, Platform: "windows",
+			Description: "Windows BSOD minidump files",
+			Action:      Action{Type: "manual", Hint: "Note the Stop code first, then safe to delete"}},
+		{Pattern: "*/Windows/MEMORY.DMP", Kind: KindTemp, Risk: RiskSafe, Platform: "windows",
+			Description: "Windows full/kernel memory dump (~RAM size)",
+			Action:      Action{Type: "manual", Hint: "Note the Stop code first, then safe to delete — requires Administrator"}},
+
+		// --- Chkdsk recovered fragments ---
+		// Cosmetic: typically KB-sized, only present after a disk error event.
+		{Pattern: "*.chk", Kind: KindTemp, Risk: RiskSafe, Platform: "windows",
+			Cosmetic:    true,
+			Description: "Chkdsk recovered file fragments — typically KB-sized, only appear after disk errors",
+			Action:      Action{Type: "manual", Hint: "Safe to delete — recovered fragments from disk errors, rarely recoverable"}},
+
+		// --- Windows.old (previous OS installation) ---
+		{Pattern: "*/Windows.old", Kind: KindTemp, Risk: RiskDanger, Platform: "windows",
+			Description: "Previous Windows installation — safe to delete if upgrade is stable (often 15–30 GB)",
+			Action:      Action{Type: "command", Command: "cleanmgr /d C: /sageset:65535 && cleanmgr /d C: /sagerun:65535"}},
+
+		// --- Windows Spotlight lock screen cache ---
+		// Cosmetic: typically <100 MB, Windows re-downloads automatically in the background.
+		{Pattern: "*/ContentDeliveryManager_cw5n1h2txyewy/LocalState/Assets", Kind: KindCache, Risk: RiskSafe, Platform: "windows",
+			Cosmetic:    true,
+			Description: "Windows Spotlight lock screen cache — typically <100 MB, re-downloaded automatically",
+			Action:      Action{Type: "manual", Hint: "Delete contents — Windows will re-download lock screen images"}},
+
+		// --- Event logs (CCleaner Advanced) ---
+		{Pattern: "*/System32/winevt/Logs", Kind: KindLog, Risk: RiskCaution, Platform: "windows",
+			Description: "Windows Event Viewer logs (*.evtx) — requires Administrator",
+			Action:      Action{Type: "command", Command: "sudo powershell Get-WinEvent -ListLog * | Where-Object {$_.RecordCount -gt 0} | ForEach-Object { [System.Diagnostics.Eventing.Reader.EventLogSession]::GlobalSession.ClearLog($_.LogName) }"}},
+
+		// --- GPU driver shader caches ---
+		{Pattern: "*/NVIDIA/DXCache", Kind: KindCache, Risk: RiskSafe, Platform: "windows",
+			Description: "NVIDIA DirectX shader cache (rebuilt by driver on next use)",
+			Action:      Action{Type: "manual", Hint: "Delete contents — GPU driver rebuilds automatically"}},
+		{Pattern: "*/NVIDIA/GLCache", Kind: KindCache, Risk: RiskSafe, Platform: "windows",
+			Description: "NVIDIA OpenGL shader cache (rebuilt by driver on next use)",
+			Action:      Action{Type: "manual", Hint: "Delete contents — GPU driver rebuilds automatically"}},
+		{Pattern: "*/NVIDIA/ComputeCache", Kind: KindCache, Risk: RiskSafe, Platform: "windows",
+			Description: "NVIDIA CUDA compute cache",
+			Action:      Action{Type: "manual", Hint: "Delete contents — rebuilt on next CUDA workload"}},
+		{Pattern: "*/AMD/DxCache", Kind: KindCache, Risk: RiskSafe, Platform: "windows",
+			Description: "AMD DirectX shader cache (rebuilt by driver on next use)",
+			Action:      Action{Type: "manual", Hint: "Delete contents — GPU driver rebuilds automatically"}},
+		{Pattern: "*/AMD/GLCache", Kind: KindCache, Risk: RiskSafe, Platform: "windows",
+			Description: "AMD OpenGL shader cache",
+			Action:      Action{Type: "manual", Hint: "Delete contents — GPU driver rebuilds automatically"}},
+
+		// --- Java Web Start cache ---
+		{Pattern: "*/Sun/Java/Deployment/cache", Kind: KindCache, Risk: RiskSafe, Platform: "windows",
+			Description: "Java Web Start application cache",
+			Action:      Action{Type: "command", Command: "javaws -uninstall"}},
+
+		// --- Microsoft Office cache ---
+		{Pattern: "*/Microsoft/Office/16.0/OfficeFileCache", Kind: KindCache, Risk: RiskSafe, Platform: "windows",
+			Description: "Office 2016/365 file sync cache",
+			Action:      Action{Type: "manual", Hint: "Delete contents — rebuilds on next Office sync"}},
+		{Pattern: "*/Microsoft/Office/15.0/OfficeFileCache", Kind: KindCache, Risk: RiskSafe, Platform: "windows",
+			Description: "Office 2013 file sync cache",
+			Action:      Action{Type: "manual", Hint: "Delete contents — rebuilds on next Office sync"}},
+
+		// --- Visual Studio ---
+		{Pattern: "*/.vs", Kind: KindCache, Risk: RiskSafe, Platform: "windows",
+			Description: "Visual Studio solution cache (.vs folder — IntelliSense, breakpoints, layout)",
+			Action:      Action{Type: "manual", Hint: "Delete .vs folder — VS recreates when solution reopened (loses breakpoints/layout)"}},
+		{Pattern: "*/VisualStudio/*/ComponentModelCache", Kind: KindCache, Risk: RiskSafe, Platform: "windows",
+			Description: "Visual Studio extension component model cache",
+			Action:      Action{Type: "manual", Hint: "Delete contents — VS rebuilds on next start (may be slow)"}},
+		{Pattern: "*/VisualStudio/*/ActivityLog.xml", Kind: KindLog, Risk: RiskSafe, Platform: "windows",
+			Description: "Visual Studio activity log",
+			Action:      Action{Type: "manual", Hint: "Delete file — VS creates a new one on next start"}},
+
+		// --- Zoom ---
+		{Pattern: "*/AppData/Roaming/Zoom/logs", Kind: KindLog, Risk: RiskSafe, Platform: "windows",
+			Description: "Zoom meeting and application logs",
+			Action:      Action{Type: "manual", Hint: "Delete log files"}},
+		{Pattern: "*/AppData/Roaming/Zoom/data/Plugins", Kind: KindCache, Risk: RiskSafe, Platform: "windows",
+			Description: "Zoom plugin cache",
+			Action:      Action{Type: "manual", Hint: "Delete contents — Zoom re-downloads on next start"}},
+
+		// --- WeChat cache (data directories remain whitelisted in config) ---
+		{Pattern: "*/WeChat Files/*/Cache", Kind: KindCache, Risk: RiskSafe, Platform: "windows",
+			Description: "WeChat render cache (remove '*/WeChat Files' from config whitelist to enable)",
+			Action:      Action{Type: "manual", Hint: "Delete Cache folder contents — WeChat re-downloads as needed"}},
+		{Pattern: "*/WeChat Files/*/Temp", Kind: KindTemp, Risk: RiskSafe, Platform: "windows",
+			Description: "WeChat temp files",
+			Action:      Action{Type: "manual", Hint: "Delete Temp folder contents"}},
+
+		// --- QQ / QQNT cache ---
+		{Pattern: "*/Tencent Files/*/Cache", Kind: KindCache, Risk: RiskSafe, Platform: "windows",
+			Description: "QQ render cache (remove '*/Tencent Files' from config whitelist to enable)",
+			Action:      Action{Type: "manual", Hint: "Delete Cache folder contents"}},
+		{Pattern: "*/Tencent/QQNT/*/Cache", Kind: KindCache, Risk: RiskSafe, Platform: "windows",
+			Description: "QQNT (new QQ) app cache",
+			Action:      Action{Type: "manual", Hint: "Delete Cache folder contents"}},
+
+		// --- OBS Studio ---
+		{Pattern: "*/obs-studio/logs", Kind: KindLog, Risk: RiskSafe, Platform: "windows",
+			Description: "OBS Studio recording and streaming logs",
+			Action:      Action{Type: "manual", Hint: "Delete old log files — keep recent ones for troubleshooting"}},
+
+		// --- Steam partially downloaded games ---
+		{Pattern: "*/Steam/steamapps/downloading", Kind: KindTemp, Risk: RiskCaution, Platform: "windows",
+			Description: "Steam in-progress game downloads (incomplete, not playable)",
+			Action:      Action{Type: "manual", Hint: "Only delete if you no longer want these downloads — Steam will restart from scratch"}},
+
+		// --- Notepad++ auto-save backups ---
+		{Pattern: "*/notepad++/backup", Kind: KindTemp, Risk: RiskCaution, Platform: "windows",
+			Description: "Notepad++ auto-saved backup files",
+			Action:      Action{Type: "manual", Hint: "Check for unsaved work before deleting"}},
 	}
 }

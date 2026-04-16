@@ -174,9 +174,12 @@ func runScan(cmd *cobra.Command, args []string) error {
 			}
 		}
 
-		eng := scanner.SelectEngine(path, scanEngine)
+		eng, engNote := scanner.SelectEngine(path, scanEngine)
 		if eng == nil {
 			eng = &scanner.FastwalkEngine{}
+		}
+		if engNote != "" {
+			fmt.Fprintf(cmd.ErrOrStderr(), "Note: %s\n", engNote)
 		}
 
 		fmt.Fprintf(cmd.ErrOrStderr(), "Scanning %s (engine: %s)...\n", path, eng.Name())
