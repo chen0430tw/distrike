@@ -58,10 +58,11 @@ func (e *FastwalkEngine) Scan(path string, opts ScanOptions) (*ScanResult, error
 	// Track top-level (depth 1) directory sizes
 	// key = top-level entry path, value = accumulated size
 	type dirInfo struct {
-		size       int64
-		childCount int32
-		lastMod    time.Time
-		isDir      bool
+		size          int64
+		childCount    int32
+		lastMod       time.Time
+		newestCreated time.Time // most recent birthtime among accumulated files
+		isDir         bool
 	}
 
 	var mu sync.Mutex
@@ -139,11 +140,13 @@ func (e *FastwalkEngine) Scan(path string, opts ScanOptions) (*ScanResult, error
 		info, infoErr := d.Info()
 		var fileSize int64
 		var modTime time.Time
+		var birthTime time.Time
 		if infoErr == nil {
 			if !d.IsDir() {
 				fileSize = info.Size()
 			}
 			modTime = info.ModTime()
+			birthTime = getBirthtime(info)
 
 			// Time filter: only count files within the time window.
 			// Directories always pass (their cumulative size comes from their files).
@@ -152,6 +155,13 @@ func (e *FastwalkEngine) Scan(path string, opts ScanOptions) (*ScanResult, error
 					fileSize = 0 // exclude from size accumulation
 				}
 				if !opts.BeforeTime.IsZero() && modTime.After(opts.BeforeTime) {
+					fileSize = 0
+				}
+				// Creation-time (birthtime) filter: treats "only new files" as increment.
+				if !opts.CreatedAfterTime.IsZero() && (!birthTime.IsZero() && birthTime.Before(opts.CreatedAfterTime)) {
+					fileSize = 0
+				}
+				if !opts.CreatedBeforeTime.IsZero() && (!birthTime.IsZero() && birthTime.After(opts.CreatedBeforeTime)) {
 					fileSize = 0
 				}
 			}
@@ -193,11 +203,14 @@ func (e *FastwalkEngine) Scan(path string, opts ScanOptions) (*ScanResult, error
 			topLevel[topKey] = di
 		}
 		di.size += fileSize
-		if depth == 1 {
-			// Update last modified for the top-level entry itself
-			if modTime.After(di.lastMod) {
-				di.lastMod = modTime
-			}
+		// Propagate the most recent modtime and birthtime from any depth up to the
+		// top-level entry, so --after/--before and --created-after/--created-before
+		// filters in the output layer see the deepest recent change.
+		if modTime.After(di.lastMod) {
+			di.lastMod = modTime
+		}
+		if !birthTime.IsZero() && birthTime.After(di.newestCreated) {
+			di.newestCreated = birthTime
 		}
 		di.childCount++
 		mu.Unlock()
@@ -225,6 +238,7 @@ func (e *FastwalkEngine) Scan(path string, opts ScanOptions) (*ScanResult, error
 			IsDir:        di.isDir,
 			ChildCount:   int(di.childCount),
 			LastModified: di.lastMod,
+			CreatedAt:    di.newestCreated,
 		}
 		h.Add(entry)
 	}

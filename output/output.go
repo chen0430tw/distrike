@@ -272,8 +272,9 @@ func RenderStatus(data StatusOutput, asJSON bool) string {
 	}
 	drvCol := drvW + 2 // +2 for border spaces
 
-	// Columns: Drive(drvCol) | Bar(barW+1) | Used%(pctW) | Free(10) | Total(10) | Signal(sigW)
-	w := drvCol + 1 + barW + 1 + 1 + pctW + 1 + 10 + 1 + 10 + 1 + sigW
+	// Columns: Drive(drvCol) | Bar(barW+1) | Used%(pctW) | Free(11) | Total(11) | Signal(sigW)
+	// Free/Total use 11 to fit "1023.9 GB" (9 chars) + 2 padding without overflow.
+	w := drvCol + 1 + barW + 1 + 1 + pctW + 1 + 11 + 1 + 11 + 1 + sigW
 
 	var sb strings.Builder
 
@@ -286,10 +287,10 @@ func RenderStatus(data StatusOutput, asJSON bool) string {
 	}
 	sb.WriteString("╭" + strings.Repeat("─", w) + "╮\n")
 	sb.WriteString("│" + title + strings.Repeat(" ", padding) + killStr + "│\n")
-	sb.WriteString("├" + strings.Repeat("─", drvCol) + "┬" + strings.Repeat("─", barW+1) + "┬" + strings.Repeat("─", pctW) + "┬" + strings.Repeat("─", 10) + "┬" + strings.Repeat("─", 10) + "┬" + strings.Repeat("─", sigW) + "┤\n")
-	sb.WriteString(fmt.Sprintf("│ %-*s │ %-*s │ %6s │ %8s │ %8s │ %-*s│\n",
+	sb.WriteString("├" + strings.Repeat("─", drvCol) + "┬" + strings.Repeat("─", barW+1) + "┬" + strings.Repeat("─", pctW) + "┬" + strings.Repeat("─", 11) + "┬" + strings.Repeat("─", 11) + "┬" + strings.Repeat("─", sigW) + "┤\n")
+	sb.WriteString(fmt.Sprintf("│ %-*s │ %-*s │ %6s │ %9s │ %9s │ %-*s│\n",
 		drvW, "Drv", barW-1, "Usage", "Used%", "Free", "Total", sigW-1, "Signal"))
-	sb.WriteString("├" + strings.Repeat("─", drvCol) + "┼" + strings.Repeat("─", barW+1) + "┼" + strings.Repeat("─", pctW) + "┼" + strings.Repeat("─", 10) + "┼" + strings.Repeat("─", 10) + "┼" + strings.Repeat("─", sigW) + "┤\n")
+	sb.WriteString("├" + strings.Repeat("─", drvCol) + "┼" + strings.Repeat("─", barW+1) + "┼" + strings.Repeat("─", pctW) + "┼" + strings.Repeat("─", 11) + "┼" + strings.Repeat("─", 11) + "┼" + strings.Repeat("─", sigW) + "┤\n")
 
 	// Drive rows — manual assembly to avoid ANSI codes breaking fmt width
 	for _, d := range data.Drives {
@@ -299,8 +300,8 @@ func RenderStatus(data StatusOutput, asJSON bool) string {
 		}
 		bar := progressBar(usedRatio, barW-3) // -3: barW minus [] brackets and space
 		pct := fmt.Sprintf("%6s", fmt.Sprintf("%.1f%%", usedRatio*100))
-		free := fmt.Sprintf("%8s", units.FormatSize(d.FreeBytes))
-		total := fmt.Sprintf("%8s", units.FormatSize(d.TotalBytes))
+		free := fmt.Sprintf("%9s", units.FormatSize(d.FreeBytes))
+		total := fmt.Sprintf("%9s", units.FormatSize(d.TotalBytes))
 
 		sigText := signalName(d.Signal.Light)
 		if d.Removable {

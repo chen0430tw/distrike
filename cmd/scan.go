@@ -17,13 +17,15 @@ import (
 )
 
 var (
-	scanTop     int
-	scanMinSize string
-	scanDepth   int
-	scanEngine  string
-	scanNoCache bool
-	scanAfter   string
-	scanBefore  string
+	scanTop          int
+	scanMinSize      string
+	scanDepth        int
+	scanEngine       string
+	scanNoCache      bool
+	scanAfter        string
+	scanBefore       string
+	scanCreatedAfter  string
+	scanCreatedBefore string
 )
 
 var scanCmd = &cobra.Command{
@@ -41,6 +43,8 @@ func init() {
 	scanCmd.Flags().BoolVar(&scanNoCache, "no-cache", false, "skip scan cache")
 	scanCmd.Flags().StringVar(&scanAfter, "after", "", "only show entries modified after (td/yd/3d/7d/tw/lw/tm/@timestamp/YYYY-MM-DD)")
 	scanCmd.Flags().StringVar(&scanBefore, "before", "", "only show entries modified before")
+	scanCmd.Flags().StringVar(&scanCreatedAfter, "created-after", "", "only show entries created (birthtime) after — use to find true increment, not just updated files")
+	scanCmd.Flags().StringVar(&scanCreatedBefore, "created-before", "", "only show entries created (birthtime) before")
 	rootCmd.AddCommand(scanCmd)
 }
 
@@ -71,7 +75,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 	}
 
 	// Parse time filters
-	var afterTime, beforeTime time.Time
+	var afterTime, beforeTime, createdAfterTime, createdBeforeTime time.Time
 	if scanAfter != "" {
 		t, err := units.ParseDateShortcut(scanAfter)
 		if err != nil {
@@ -86,16 +90,32 @@ func runScan(cmd *cobra.Command, args []string) error {
 		}
 		beforeTime = t
 	}
+	if scanCreatedAfter != "" {
+		t, err := units.ParseDateShortcut(scanCreatedAfter)
+		if err != nil {
+			return fmt.Errorf("parsing --created-after %q: %w", scanCreatedAfter, err)
+		}
+		createdAfterTime = t
+	}
+	if scanCreatedBefore != "" {
+		t, err := units.ParseDateShortcut(scanCreatedBefore)
+		if err != nil {
+			return fmt.Errorf("parsing --created-before %q: %w", scanCreatedBefore, err)
+		}
+		createdBeforeTime = t
+	}
 
 	opts := scanner.ScanOptions{
-		MaxDepth:       scanDepth,
-		MinSize:        minSize,
-		TopN:           scanTop,
-		FollowSymlinks: cfg.Scan.FollowSymlinks,
-		Workers:        cfg.Scan.Workers,
-		Exclude:        cfg.Scan.Exclude,
-		AfterTime:      afterTime,
-		BeforeTime:     beforeTime,
+		MaxDepth:          scanDepth,
+		MinSize:           minSize,
+		TopN:              scanTop,
+		FollowSymlinks:    cfg.Scan.FollowSymlinks,
+		Workers:           cfg.Scan.Workers,
+		Exclude:           cfg.Scan.Exclude,
+		AfterTime:         afterTime,
+		BeforeTime:        beforeTime,
+		CreatedAfterTime:  createdAfterTime,
+		CreatedBeforeTime: createdBeforeTime,
 	}
 
 	// Set up cache if enabled
@@ -159,6 +179,12 @@ func runScan(cmd *cobra.Command, args []string) error {
 						continue
 					}
 					if !beforeTime.IsZero() && e.LastModified.After(beforeTime) {
+						continue
+					}
+					if !createdAfterTime.IsZero() && (e.CreatedAt.IsZero() || e.CreatedAt.Before(createdAfterTime)) {
+						continue
+					}
+					if !createdBeforeTime.IsZero() && (e.CreatedAt.IsZero() || e.CreatedAt.After(createdBeforeTime)) {
 						continue
 					}
 					scanOut.Data.Entries = append(scanOut.Data.Entries, output.ScanEntry{

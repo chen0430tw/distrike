@@ -23,6 +23,8 @@ type ScanOptions struct {
 	CollectFileExts []string // Extra file extensions to collect individually (e.g. ".pt", ".safetensors").
 	AfterTime      time.Time // Only count files modified after this time (zero = no filter).
 	BeforeTime     time.Time // Only count files modified before this time (zero = no filter).
+	CreatedAfterTime  time.Time // Only count files created (birthtime) after this time (zero = no filter).
+	CreatedBeforeTime time.Time // Only count files created (birthtime) before this time (zero = no filter).
 }
 
 // ScanResult holds the output of a scan operation.
