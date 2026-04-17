@@ -281,7 +281,7 @@ func runClean(cmd *cobra.Command, args []string) error {
 
 	cleanOut.Data.FreedHuman = units.FormatSize(cleanOut.Data.FreedBytes)
 
-	result := output.RenderClean(cleanOut, jsonOutput)
+	result := output.RenderClean(cleanOut, output.FormatFromFlags(jsonOutput, formatFlag))
 	fmt.Println(result)
 
 	if len(cleanOut.Data.Errors) > 0 {

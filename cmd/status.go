@@ -74,7 +74,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	// Collect virtual disk info
 	statusData.VDisks = collectVDisks()
 
-	result := output.RenderStatus(statusData, jsonOutput)
+	result := output.RenderStatus(statusData, output.FormatFromFlags(jsonOutput, formatFlag))
 	fmt.Println(result)
 
 	// Health checks

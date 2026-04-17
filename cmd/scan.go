@@ -195,7 +195,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 						Children:  e.ChildCount,
 					})
 				}
-				fmt.Println(output.RenderScan(scanOut, jsonOutput))
+				fmt.Println(output.RenderScan(scanOut, output.FormatFromFlags(jsonOutput, formatFlag)))
 				continue
 			}
 		}
@@ -254,7 +254,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 			})
 		}
 
-		fmt.Println(output.RenderScan(scanOut, jsonOutput))
+		fmt.Println(output.RenderScan(scanOut, output.FormatFromFlags(jsonOutput, formatFlag)))
 	}
 
 	return nil

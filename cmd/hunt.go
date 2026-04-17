@@ -207,6 +207,6 @@ func runHunt(cmd *cobra.Command, args []string) error {
 		},
 	}
 
-	fmt.Println(output.RenderHunt(huntOut, jsonOutput))
+	fmt.Println(output.RenderHunt(huntOut, output.FormatFromFlags(jsonOutput, formatFlag)))
 	return nil
 }

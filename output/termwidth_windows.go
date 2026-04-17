@@ -19,7 +19,7 @@ func TermWidth() int {
 	if w, _, err := term.GetSize(int(os.Stderr.Fd())); err == nil && w > 20 {
 		return w
 	}
-	return 120
+	return 80
 }
 
 // UseUnicode reports whether Unicode box-drawing characters should be used.

@@ -9,6 +9,7 @@ import (
 	"distrike/config"
 	"distrike/internal/units"
 	"distrike/killline"
+	"distrike/output"
 	"distrike/scanner"
 	"distrike/signal"
 
@@ -143,8 +144,11 @@ func runTopo(cmd *cobra.Command, args []string) error {
 	}
 	sig := signal.Classify(usedRatio, 0, result.FreeBytes, result.TotalBytes, killLineBytes, thresholds)
 
-	// Color codes
-	const reset = "\033[0m"
+	// Color codes (empty when stdout is not a TTY or NO_COLOR is set)
+	reset := ""
+	if output.UseColor() {
+		reset = "\033[0m"
+	}
 	sigColor := topoColor(sig.Light)
 	sigName := topoSignalName(sig.Light)
 
@@ -384,6 +388,9 @@ func topoSignalName(l signal.Light) string {
 }
 
 func topoColor(l signal.Light) string {
+	if !output.UseColor() {
+		return ""
+	}
 	switch l {
 	case signal.Purple:
 		return "\033[38;2;147;51;234m"

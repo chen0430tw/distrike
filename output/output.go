@@ -3,6 +3,7 @@ package output
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"runtime"
 	"strings"
 	"time"
@@ -147,14 +148,24 @@ func platform() string {
 	return runtime.GOOS
 }
 
-// 24-bit RGB color codes
-const (
+// 24-bit RGB color codes. Stripped at init() only when NO_COLOR is set;
+// TTY detection is NOT used here because --format=table is an explicit user
+// request to render the framed table even through a pipe, and colors are
+// part of that rendering. Auto-detection of TTY happens at format-resolution
+// time (ResolveAuto in format.go), not at color emission.
+var (
 	colorReset  = "\033[0m"
 	colorGreen  = "\033[38;2;50;205;50m"        // Lime green rgb(50,205,50)
 	colorYellow = "\033[38;2;255;193;7m"        // Claude Code warning amber
 	colorRed    = "\033[38;2;218;38;38m"        // Windows Explorer capacity-bar red #DA2626
 	colorPurple = "\033[38;2;147;51;234m"       // Claude Code purple
 )
+
+func init() {
+	if v, ok := os.LookupEnv("NO_COLOR"); ok && v != "" {
+		colorReset, colorGreen, colorYellow, colorRed, colorPurple = "", "", "", "", ""
+	}
+}
 
 // signalName returns the plain text name for a signal light.
 func signalName(l signal.Light) string {
@@ -227,196 +238,321 @@ func shortenPath(p string, maxLen int) string {
 	return p[:headLen] + "..." + p[len(p)-tailLen:]
 }
 
-// progressBar builds a text progress bar.
-// At width=40, resolution is 2.5% per cell.
-func progressBar(usedRatio float64, width int) string {
-	filled := int(usedRatio*float64(width) + 0.5) // round
-	if filled > width {
-		filled = width
+// progressBar builds a text progress bar using two glyphs:
+//
+//	frac >= 0.5: █ (U+2588, full block, signal-color solid)
+//	frac <  0.5: ░ (U+2591, light shade — mesh track)
+//
+// Both characters are in Windows Terminal's AtlasEngine built-in glyph
+// range (U+2500-259F), so they're drawn by WT's own pixel code — not via
+// the font — guaranteeing pixel-perfect cell alignment.
+//
+// We explored adding ▌ (U+258C, left half block) as a partial-fill indicator
+// for finer granularity, but ▌'s right half renders as terminal bg while
+// adjacent ░ cells render as screen-absolute dither — visible gap at the
+// ▌→░ boundary. See docs/cascadia-shade-deconstruction.md for why a
+// seamless partial cell is physically impossible under WT's rendering
+// architecture. Binary ends up as the cleanest compromise.
+//
+// Precision: ±1.7% for a 30-cell bar. Plenty for disk-status visualization
+// where the exact percentage is shown in the adjacent Used% column.
+//
+// trackBg, if non-empty, wraps the unfilled region with an ANSI SGR
+// background so mesh dots render on a signal-tinted track.
+func progressBar(usedRatio float64, width int, trackBg string) string {
+	if width < 1 {
+		return "[]"
 	}
-	if filled < 0 {
-		filled = 0
+	if usedRatio < 0 {
+		usedRatio = 0
 	}
-	return "[" + strings.Repeat("\u2588", filled) + strings.Repeat("\u2591", width-filled) + "]"
+	if usedRatio > 1 {
+		usedRatio = 1
+	}
+	const bgReset = "\033[49m"
+	var filled, unfilled strings.Builder
+	for i := 0; i < width; i++ {
+		frac := usedRatio*float64(width) - float64(i)
+		if frac >= 0.5 {
+			filled.WriteString("\u2588") // █ FULL
+		} else {
+			unfilled.WriteString("\u2591") // ░ LIGHT SHADE
+		}
+	}
+	var sb strings.Builder
+	sb.WriteByte('[')
+	sb.WriteString(filled.String())
+	if unfilled.Len() > 0 {
+		if trackBg != "" {
+			sb.WriteString(trackBg)
+		}
+		sb.WriteString(unfilled.String())
+		if trackBg != "" {
+			sb.WriteString(bgReset)
+		}
+	}
+	sb.WriteByte(']')
+	return sb.String()
 }
 
-// RenderStatus formats status output as text or JSON.
-func RenderStatus(data StatusOutput, asJSON bool) string {
-	if asJSON {
-		data.SchemaVersion = schemaVer
-		data.Tool = toolName
-		data.ToolVersion = ToolVersion
-		data.Timestamp = now()
-		data.Platform = platform()
-		b, err := json.MarshalIndent(data, "", "  ")
-		if err != nil {
-			return fmt.Sprintf(`{"error": %q}`, err.Error())
-		}
-		return string(b)
+
+// RenderStatus formats status output per the requested Format.
+func RenderStatus(data StatusOutput, format Format) string {
+	if format == FormatJSON {
+		return renderJSON(func() interface{} {
+			data.SchemaVersion = schemaVer
+			data.Tool = toolName
+			data.ToolVersion = ToolVersion
+			data.Timestamp = now()
+			data.Platform = platform()
+			return data
+		})
 	}
+	tbl := buildStatusTable(data)
+	switch ResolveAuto(format) {
+	case FormatTSV:
+		return tbl.RenderTSV()
+	default: // FormatTable
+		var sb strings.Builder
+		sb.WriteString(tbl.RenderTable(TermWidth()))
+		if len(data.VDisks) > 0 {
+			sb.WriteString("\n Virtual Disks:\n")
+			for _, v := range data.VDisks {
+				short := shortenPath(v.Path, 50)
+				sb.WriteString(fmt.Sprintf("   %-20s %10s   %s\n", v.Name, units.FormatSize(v.SizeBytes), short))
+			}
+		} else {
+			sb.WriteString("\n Virtual Disks: none\n")
+		}
+		sb.WriteString("\n PURPLE < 1 GB │ RED < kill-line │ YELLOW < kill-line×1.5 │ GREEN = safe\n")
+		return sb.String()
+	}
+}
 
-	const sigW = 22 // fits "CRITICAL[USB][ReFS]" + padding
-	const pctW = 8  // fits "100.0%" + padding
-	const freeW = 11
-	const totalW = 11
-	const minBarW = 15
-	const minDrvW = 4
-
-	// Fixed overhead per row (separators + fixed-width columns, excluding drv and bar).
-	const fixedOverhead = 1 + 1 + pctW + 1 + freeW + 1 + totalW + 1 + sigW
-
-	// Determine longest drive path needed.
-	drvW := minDrvW
+// buildStatusTable constructs the responsive Table for status output.
+// Column visibility gated by breakpoint (Bootstrap-style):
+//
+//	xs+: Drv, Signal         (mandatory)
+//	sm+: Usage bar, Free
+//	md+: Used%
+//	lg+: Total
+func buildStatusTable(data StatusOutput) Table {
+	maxPath, maxSig := 3, 6
 	for _, d := range data.Drives {
 		p := strings.TrimRight(d.Path, `\`)
-		if len(p) > drvW {
-			drvW = len(p)
+		if n := len([]rune(p)); n > maxPath {
+			maxPath = n
+		}
+		if n := len([]rune(statusSignalText(d))); n > maxSig {
+			maxSig = n
 		}
 	}
-
-	// Fit table within terminal width.
-	// Inner width: (drvW+2) + (barW+2) + fixedOverhead; outer border adds 2.
-	termW := TermWidth()
-	barW := 30
-	for barW > minBarW {
-		w := (drvW + 2) + (barW + 1 + 1) + fixedOverhead
-		if w+2 <= termW {
-			break
-		}
-		barW -= 2
-	}
-	for drvW > minDrvW {
-		w := (drvW + 2) + (barW + 1 + 1) + fixedOverhead
-		if w+2 <= termW {
-			break
-		}
-		drvW--
+	if maxPath > 30 {
+		maxPath = 30
 	}
 
-	drvCol := drvW + 2 // +2 for border spaces
-
-	// Columns: Drive(drvCol) | Bar(barW+1) | Used%(pctW) | Free(freeW) | Total(totalW) | Signal(sigW)
-	w := drvCol + 1 + barW + 1 + 1 + pctW + 1 + freeW + 1 + totalW + 1 + sigW
-
-	var sb strings.Builder
-
-	// Header
-	title := fmt.Sprintf(" Distrike %s", ToolVersion)
-	killStr := fmt.Sprintf("Kill-line: %s ", units.FormatSize(data.KillLineBytes))
-	padding := w - len(title) - len(killStr)
-	if padding < 1 {
-		padding = 1
+	cols := []Column{
+		{Name: "Drv", Natural: maxPath, Min: 4, VisibleFrom: BpXS, Align: AlignLeft},
+		// Usage Natural=32: 30 inner cells, 3.33% per cell. Width=35 (33 inner)
+		// was tried to align █→░ boundaries with WT's 4-cell dither tiles —
+		// no visible improvement in seam appearance, and the wider bar pushed
+		// the whole table longer. Rolled back to 30 inner as the balance
+		// between precision and column footprint. Shrinks to Min=10 at narrow.
+		{Name: "Usage", Natural: 32, Min: 10, VisibleFrom: BpSM, Align: AlignLeft},
+		{Name: "Used%", Natural: 6, Min: 6, VisibleFrom: BpMD, Align: AlignRight},
+		{Name: "Free", Natural: 9, Min: 9, VisibleFrom: BpSM, Align: AlignRight},
+		{Name: "Total", Natural: 9, Min: 9, VisibleFrom: BpLG, Align: AlignRight},
+		{Name: "Signal", Natural: maxSig, Min: 6, VisibleFrom: BpXS, Align: AlignLeft},
 	}
-	sb.WriteString("╭" + strings.Repeat("─", w) + "╮\n")
-	sb.WriteString("│" + title + strings.Repeat(" ", padding) + killStr + "│\n")
-	sb.WriteString("├" + strings.Repeat("─", drvCol) + "┬" + strings.Repeat("─", barW+1) + "┬" + strings.Repeat("─", pctW) + "┬" + strings.Repeat("─", freeW) + "┬" + strings.Repeat("─", totalW) + "┬" + strings.Repeat("─", sigW) + "┤\n")
-	sb.WriteString(fmt.Sprintf("│ %-*s │ %-*s │ %6s │ %*s │ %*s │ %-*s│\n",
-		drvW, "Drv", barW-1, "Usage", "Used%", freeW-2, "Free", totalW-2, "Total", sigW-1, "Signal"))
-	sb.WriteString("├" + strings.Repeat("─", drvCol) + "┼" + strings.Repeat("─", barW+1) + "┼" + strings.Repeat("─", pctW) + "┼" + strings.Repeat("─", freeW) + "┼" + strings.Repeat("─", totalW) + "┼" + strings.Repeat("─", sigW) + "┤\n")
+	// Container caps raised to accommodate wider Usage bar without over-stretching.
+	container := Container{MaxWidth: map[Breakpoint]int{BpXL: 160, BpXXL: 180}}
 
-	// Drive rows — manual assembly to avoid ANSI codes breaking fmt width
-	for _, d := range data.Drives {
-		var usedRatio float64
-		if d.TotalBytes > 0 {
-			usedRatio = float64(d.UsedBytes) / float64(d.TotalBytes)
-		}
-		bar := progressBar(usedRatio, barW-3) // -3: barW minus [] brackets and space
-		pct := fmt.Sprintf("%6s", fmt.Sprintf("%.1f%%", usedRatio*100))
-		free := fmt.Sprintf("%*s", freeW-2, units.FormatSize(d.FreeBytes))
-		total := fmt.Sprintf("%*s", totalW-2, units.FormatSize(d.TotalBytes))
-
-		sigText := signalName(d.Signal.Light)
-		if d.Removable {
-			sigText += "[USB]"
-		}
-		if d.FSType != "" && !strings.EqualFold(d.FSType, "NTFS") {
-			sigText += "[" + d.FSType + "]"
-		}
-		paddedSig := fmt.Sprintf("%-*s", sigW-1, sigText)
-
-		// Truncate path if it exceeds the column width.
-		path := strings.TrimRight(d.Path, `\`)
-		drv := fmt.Sprintf("%-*s", drvW, shortenPath(path, drvW))
-		c := signalColor(d.Signal.Light)
-
-		sb.WriteString("│ " + drv + " │ " + c + bar + colorReset + " │ " + pct + " │ " + free + " │ " + total + " │ " + c + paddedSig + colorReset + "│\n")
+	return Table{
+		Columns:   cols,
+		Container: container,
+		NumRows:   len(data.Drives),
+		RenderCell: func(row, col, width int) string {
+			d := data.Drives[row]
+			var ratio float64
+			if d.TotalBytes > 0 {
+				ratio = float64(d.UsedBytes) / float64(d.TotalBytes)
+			}
+			switch cols[col].Name {
+			case "Drv":
+				return TruncPath(strings.TrimRight(d.Path, `\`), width)
+			case "Usage":
+				inner := width - 2
+				if inner < 1 {
+					inner = 1
+				}
+				return signalColor(d.Signal.Light) + progressBar(ratio, inner, "") + colorReset
+			case "Used%":
+				return fmt.Sprintf("%.1f%%", ratio*100)
+			case "Free":
+				return units.FormatSize(d.FreeBytes)
+			case "Total":
+				return units.FormatSize(d.TotalBytes)
+			case "Signal":
+				return signalColor(d.Signal.Light) + statusSignalText(d) + colorReset
+			}
+			return ""
+		},
+		TSVCell: func(row, col int) string {
+			d := data.Drives[row]
+			var ratio float64
+			if d.TotalBytes > 0 {
+				ratio = float64(d.UsedBytes) / float64(d.TotalBytes)
+			}
+			switch cols[col].Name {
+			case "Drv":
+				return strings.TrimRight(d.Path, `\`)
+			case "Usage", "Used%":
+				return fmt.Sprintf("%.4f", ratio)
+			case "Free":
+				return fmt.Sprintf("%d", d.FreeBytes)
+			case "Total":
+				return fmt.Sprintf("%d", d.TotalBytes)
+			case "Signal":
+				return statusSignalText(d)
+			}
+			return ""
+		},
 	}
-
-	sb.WriteString("╰" + strings.Repeat("─", drvCol) + "┴" + strings.Repeat("─", barW+1) + "┴" + strings.Repeat("─", pctW) + "┴" + strings.Repeat("─", freeW) + "┴" + strings.Repeat("─", totalW) + "┴" + strings.Repeat("─", sigW) + "╯\n")
-
-	// Virtual disks section
-	if len(data.VDisks) > 0 {
-		sb.WriteString("\n Virtual Disks:\n")
-		for _, v := range data.VDisks {
-			short := shortenPath(v.Path, 50)
-			sb.WriteString(fmt.Sprintf("   %-20s %10s   %s\n", v.Name, units.FormatSize(v.SizeBytes), short))
-		}
-	} else {
-		sb.WriteString("\n Virtual Disks: none\n")
-	}
-
-	// Signal legend
-	sb.WriteString("\n PURPLE < 1 GB │ RED < kill-line │ YELLOW < kill-line×1.5 │ GREEN = safe\n")
-	return sb.String()
 }
 
-// RenderScan formats scan output as text or JSON.
-func RenderScan(data ScanOutput, asJSON bool) string {
-	if asJSON {
-		data.SchemaVersion = schemaVer
-		data.Tool = toolName
-		data.ToolVersion = ToolVersion
-		data.Timestamp = now()
-		data.Platform = platform()
-		b, err := json.MarshalIndent(data, "", "  ")
-		if err != nil {
-			return fmt.Sprintf(`{"error": %q}`, err.Error())
-		}
-		return string(b)
+// statusSignalText returns the signal name with [USB] and [FS] annotations.
+func statusSignalText(d DriveOutput) string {
+	t := signalName(d.Signal.Light)
+	if d.Removable {
+		t += "[USB]"
 	}
+	if d.FSType != "" && !strings.EqualFold(d.FSType, "NTFS") {
+		t += "[" + d.FSType + "]"
+	}
+	return t
+}
 
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Scan: %s  (engine: %s, coverage: %.0f%%, %dms)\n",
-		data.Data.RootPath, data.Data.EngineName,
-		data.Data.ScanCoverage*100, data.Data.DurationMs))
-	sb.WriteString(fmt.Sprintf("Total: %s  Free: %s  Used: %s\n\n",
-		units.FormatSize(data.Data.TotalBytes),
-		units.FormatSize(data.Data.FreeBytes),
-		units.FormatSize(data.Data.UsedBytes)))
+// renderJSON is a shared helper that stamps schema/version/timestamp/platform
+// onto the passed-through value and returns indented JSON.
+func renderJSON(stamp func() interface{}) string {
+	v := stamp()
+	b, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return fmt.Sprintf(`{"error": %q}`, err.Error())
+	}
+	return string(b)
+}
 
-	// Header
-	sb.WriteString(fmt.Sprintf("%-12s  %-5s  %s\n", "SIZE", "KIND", "PATH"))
-	sb.WriteString(strings.Repeat("-", 70) + "\n")
+// RenderScan formats scan output per the requested Format.
+func RenderScan(data ScanOutput, format Format) string {
+	if format == FormatJSON {
+		return renderJSON(func() interface{} {
+			data.SchemaVersion = schemaVer
+			data.Tool = toolName
+			data.ToolVersion = ToolVersion
+			data.Timestamp = now()
+			data.Platform = platform()
+			return data
+		})
+	}
+	tbl := buildScanTable(data)
+	switch ResolveAuto(format) {
+	case FormatTSV:
+		return tbl.RenderTSV()
+	default: // FormatTable
+		var sb strings.Builder
+		sb.WriteString(fmt.Sprintf("Scan: %s  (engine: %s, coverage: %.0f%%, %dms)\n",
+			data.Data.RootPath, data.Data.EngineName,
+			data.Data.ScanCoverage*100, data.Data.DurationMs))
+		sb.WriteString(fmt.Sprintf("Total: %s  Free: %s  Used: %s\n\n",
+			units.FormatSize(data.Data.TotalBytes),
+			units.FormatSize(data.Data.FreeBytes),
+			units.FormatSize(data.Data.UsedBytes)))
+		sb.WriteString(tbl.RenderTable(TermWidth()))
+		return sb.String()
+	}
+}
 
+// buildScanTable constructs the responsive Table for scan output.
+// Column visibility:
+//
+//	xs+: Size, Path (mandatory)
+//	sm+: Kind
+func buildScanTable(data ScanOutput) Table {
+	maxPath := 4
 	for _, e := range data.Data.Entries {
-		kind := "file"
-		if e.IsDir {
-			kind = "dir"
+		if n := len([]rune(e.Path)); n > maxPath {
+			maxPath = n
 		}
-		sb.WriteString(fmt.Sprintf("%-12s  %-5s  %s\n",
-			units.FormatSize(e.SizeBytes), kind, e.Path))
 	}
-	return sb.String()
+	if maxPath > 60 {
+		maxPath = 60
+	}
+
+	cols := []Column{
+		{Name: "Size", Natural: 9, Min: 9, VisibleFrom: BpXS, Align: AlignRight},
+		{Name: "Kind", Natural: 4, Min: 4, VisibleFrom: BpSM, Align: AlignLeft},
+		{Name: "Path", Natural: maxPath, Min: 10, VisibleFrom: BpXS, Align: AlignLeft},
+	}
+
+	return Table{
+		Columns: cols,
+		NumRows: len(data.Data.Entries),
+		RenderCell: func(row, col, width int) string {
+			e := data.Data.Entries[row]
+			switch cols[col].Name {
+			case "Size":
+				return units.FormatSize(e.SizeBytes)
+			case "Kind":
+				if e.IsDir {
+					return "dir"
+				}
+				return "file"
+			case "Path":
+				return TruncPath(e.Path, width)
+			}
+			return ""
+		},
+		TSVCell: func(row, col int) string {
+			e := data.Data.Entries[row]
+			switch cols[col].Name {
+			case "Size":
+				return fmt.Sprintf("%d", e.SizeBytes)
+			case "Kind":
+				if e.IsDir {
+					return "dir"
+				}
+				return "file"
+			case "Path":
+				return e.Path
+			}
+			return ""
+		},
+	}
 }
 
-// RenderHunt formats hunt output as text or JSON.
-func RenderHunt(data HuntOutput, asJSON bool) string {
-	if asJSON {
-		data.SchemaVersion = schemaVer
-		data.Tool = toolName
-		data.ToolVersion = ToolVersion
-		data.Timestamp = now()
-		data.Platform = platform()
-		b, err := json.MarshalIndent(data, "", "  ")
-		if err != nil {
-			return fmt.Sprintf(`{"error": %q}`, err.Error())
-		}
-		return string(b)
+// RenderHunt formats hunt output per the requested Format.
+// Hunt is a list-style report (multi-line per prey), not a table; TSV mode
+// flattens each prey to one row with tab-separated fields.
+func RenderHunt(data HuntOutput, format Format) string {
+	if format == FormatJSON {
+		return renderJSON(func() interface{} {
+			data.SchemaVersion = schemaVer
+			data.Tool = toolName
+			data.ToolVersion = ToolVersion
+			data.Timestamp = now()
+			data.Platform = platform()
+			return data
+		})
+	}
+	if ResolveAuto(format) == FormatTSV {
+		return renderHuntTSV(data)
 	}
 
+	termW := TermWidth()
 	var sb strings.Builder
 	sb.WriteString("Prey List\n")
-	sb.WriteString(strings.Repeat("=", 70) + "\n\n")
+	sb.WriteString(Hr("=", termW) + "\n\n")
 
 	for _, p := range data.Data.Prey {
 		tag := riskTag(p.Risk)
@@ -436,7 +572,7 @@ func RenderHunt(data HuntOutput, asJSON bool) string {
 	}
 
 	s := data.Data.Summary
-	sb.WriteString(strings.Repeat("-", 70) + "\n")
+	sb.WriteString(Hr("-", termW) + "\n")
 	sb.WriteString(fmt.Sprintf("Total: %d prey, %s reclaimable\n",
 		s.TotalPrey, units.FormatSize(s.TotalBytes)))
 	sb.WriteString(fmt.Sprintf("  SAFE: %d (%s)  CAUTION: %d (%s)  DANGER: %d (%s)\n",
@@ -445,6 +581,46 @@ func RenderHunt(data HuntOutput, asJSON bool) string {
 		s.DangerCount, units.FormatSize(s.DangerBytes)))
 
 	return sb.String()
+}
+
+func renderHuntTSV(data HuntOutput) string {
+	var sb strings.Builder
+	sb.WriteString("risk\tsize_bytes\tkind\tpath\tdescription\tcommand\thint\tcosmetic\n")
+	for _, p := range data.Data.Prey {
+		cmd := ""
+		hint := ""
+		if p.Action.Type == "command" {
+			cmd = p.Action.Command
+		}
+		if p.Action.Hint != "" {
+			hint = p.Action.Hint
+		}
+		sb.WriteString(fmt.Sprintf("%s\t%d\t%s\t%s\t%s\t%s\t%s\t%v\n",
+			riskLabel(p.Risk), p.SizeBytes, p.Kind, p.Path,
+			sanitizeTab(p.Description), sanitizeTab(cmd), sanitizeTab(hint), p.Cosmetic))
+	}
+	return sb.String()
+}
+
+// sanitizeTab replaces tabs and newlines in TSV field values.
+func sanitizeTab(s string) string {
+	s = strings.ReplaceAll(s, "\t", " ")
+	s = strings.ReplaceAll(s, "\n", " ")
+	return s
+}
+
+// riskLabel returns the plain text risk label used in TSV output (no brackets).
+func riskLabel(r hunter.Risk) string {
+	switch r {
+	case hunter.RiskSafe:
+		return "SAFE"
+	case hunter.RiskCaution:
+		return "CAUTION"
+	case hunter.RiskDanger:
+		return "DANGER"
+	default:
+		return "UNKNOWN"
+	}
 }
 
 func riskTag(r hunter.Risk) string {
@@ -460,24 +636,26 @@ func riskTag(r hunter.Risk) string {
 	}
 }
 
-// RenderClean formats clean output as text or JSON.
-func RenderClean(data CleanOutput, asJSON bool) string {
-	if asJSON {
-		data.SchemaVersion = schemaVer
-		data.Tool = toolName
-		data.ToolVersion = ToolVersion
-		data.Timestamp = now()
-		data.Platform = platform()
-		b, err := json.MarshalIndent(data, "", "  ")
-		if err != nil {
-			return fmt.Sprintf(`{"error": %q}`, err.Error())
-		}
-		return string(b)
+// RenderClean formats clean output per the requested Format.
+func RenderClean(data CleanOutput, format Format) string {
+	if format == FormatJSON {
+		return renderJSON(func() interface{} {
+			data.SchemaVersion = schemaVer
+			data.Tool = toolName
+			data.ToolVersion = ToolVersion
+			data.Timestamp = now()
+			data.Platform = platform()
+			return data
+		})
+	}
+	if ResolveAuto(format) == FormatTSV {
+		return renderCleanTSV(data)
 	}
 
+	termW := TermWidth()
 	var sb strings.Builder
 	sb.WriteString("Cleanup Results\n")
-	sb.WriteString(strings.Repeat("=", 70) + "\n\n")
+	sb.WriteString(Hr("=", termW) + "\n\n")
 
 	for _, c := range data.Data.Cleaned {
 		sb.WriteString(fmt.Sprintf("  %s  %s  (%s, freed %s)\n",
@@ -492,5 +670,20 @@ func RenderClean(data CleanOutput, asJSON bool) string {
 	}
 
 	sb.WriteString(fmt.Sprintf("\nTotal freed: %s\n", data.Data.FreedHuman))
+	return sb.String()
+}
+
+func renderCleanTSV(data CleanOutput) string {
+	var sb strings.Builder
+	sb.WriteString("kind\tpath\tsize_bytes\tfreed_bytes\trisk\tcommand\n")
+	for _, c := range data.Data.Cleaned {
+		sb.WriteString(fmt.Sprintf("%s\t%s\t%d\t%d\t%s\t%s\n",
+			c.Kind, c.Path, c.SizeBytes, c.FreedBytes, c.Risk, sanitizeTab(c.Command)))
+	}
+	if len(data.Data.Errors) > 0 {
+		for _, e := range data.Data.Errors {
+			sb.WriteString(fmt.Sprintf("ERROR\t%s\t0\t0\t\t\n", sanitizeTab(e)))
+		}
+	}
 	return sb.String()
 }

@@ -15,6 +15,7 @@ var Version = "dev"
 var (
 	jsonOutput bool
 	verbose    bool
+	formatFlag string
 )
 
 var rootCmd = &cobra.Command{
@@ -50,8 +51,9 @@ var versionCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(versionCmd)
-	rootCmd.PersistentFlags().BoolVar(&jsonOutput, "json", false, "output in JSON format")
+	rootCmd.PersistentFlags().BoolVar(&jsonOutput, "json", false, "output in JSON format (shorthand for --format=json)")
 	rootCmd.PersistentFlags().BoolVar(&verbose, "verbose", false, "verbose output")
+	rootCmd.PersistentFlags().StringVar(&formatFlag, "format", "", "output format: auto|table|tsv|json (default: auto — table on TTY, TSV on pipe)")
 	rootCmd.Version = Version
 	rootCmd.SetVersionTemplate("distrike {{.Version}}\n")
 }

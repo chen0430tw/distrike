@@ -11,6 +11,9 @@ import (
 
 // TermWidth returns the current terminal column width.
 // Priority: COLUMNS env → term.GetSize(stdout) → term.GetSize(stderr) → 80.
+// The 80-column fallback is deliberate — it's classic VT100 width and safe
+// across tmux splits, narrow windows, and `ssh host "cmd"` non-PTY output
+// piped to a local terminal of unknown width.
 func TermWidth() int {
 	if c := envColumns(); c > 0 {
 		return c
@@ -21,7 +24,7 @@ func TermWidth() int {
 	if w, _, err := term.GetSize(int(os.Stderr.Fd())); err == nil && w > 20 {
 		return w
 	}
-	return 120
+	return 80
 }
 
 // UseUnicode reports whether Unicode box-drawing characters should be used.
