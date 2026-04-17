@@ -253,7 +253,7 @@ var knownApps = []appFingerprint{
 		displayName:  "Spotify",
 		nameTokens:   []string{"spotify"},
 		markerExes:   []string{"spotify.exe", "Spotify.exe"},
-		markerDirs:   []string{"data", "storage"},
+		markerDirs:   []string{"spotify_data", "spotifycrashservices"},
 		minSizeBytes: 10 << 20,
 		preyLocations: []preyLocation{
 			{relPath: "Data", kind: KindCache, risk: RiskSafe,
@@ -265,7 +265,7 @@ var knownApps = []appFingerprint{
 		displayName:  "Zoom",
 		nameTokens:   []string{"zoom"},
 		markerExes:   []string{"zoom.exe", "Zoom.exe"},
-		markerDirs:   []string{"logs", "data"},
+		markerDirs:   []string{"logs", "zoomtemp"},
 		minSizeBytes: 5 << 20,
 		preyLocations: []preyLocation{
 			{relPath: "logs", kind: KindLog, risk: RiskSafe,
@@ -340,6 +340,20 @@ func AppDiscover(dirs []string, minSize int64) []Prey {
 
 		for _, fp := range knownApps {
 			signals := fp.computeSignals(dir, children, minSize)
+			// Hard identity gate: require name_match OR marker_exe to fire.
+			// Without at least one identity signal, structural matches (marker_dir
+			// + size_tier + prey_exists) produce false positives on unrelated dirs
+			// that happen to contain a subdirectory named "Cache" or "Data".
+			hasIdentity := false
+			for _, s := range signals {
+				if s.layer == layerNameMatch || s.layer == layerMarkerExe {
+					hasIdentity = true
+					break
+				}
+			}
+			if !hasIdentity {
+				continue
+			}
 			score := mscmGate(signals)
 			if score < 0.55 {
 				continue // gate suppresses weak / single-layer matches
