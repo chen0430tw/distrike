@@ -324,7 +324,9 @@ func RenderStatus(data StatusOutput, format Format) string {
 		} else {
 			sb.WriteString("\n Virtual Disks: none\n")
 		}
-		sb.WriteString("\n PURPLE < 1 GB │ RED < kill-line │ YELLOW < kill-line×1.5 │ GREEN = safe\n")
+		sb.WriteString(fmt.Sprintf("\n Signal is based on free space, not percentage. Kill-line: %s\n",
+			units.FormatSize(data.KillLineBytes)))
+		sb.WriteString(" PURPLE < 1 GB │ RED < kill-line │ YELLOW < kill-line×1.5 │ GREEN = safe\n")
 		return sb.String()
 	}
 }
