@@ -1,5 +1,7 @@
 # Distrike
 
+*[English README](README.md)*
+
 **你的磁盘又满了。Distrike 让这次成为最后一次。**
 
 ```

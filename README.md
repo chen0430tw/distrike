@@ -1,5 +1,7 @@
 # Distrike
 
+*[中文版 README](README.zh.md)*
+
 **Your disk is full again. Distrike makes sure it's the last time.**
 
 ```
