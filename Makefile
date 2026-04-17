@@ -4,14 +4,14 @@ LDFLAGS := -X distrike/cmd.Version=$(VERSION)
 
 # Build for current platform
 build:
-	go build -ldflags "$(LDFLAGS)" -o distrike$(shell go env GOEXE) ./...
+	go build -ldflags "$(LDFLAGS)" -o distrike$(shell go env GOEXE) .
 
 # Cross-compile release binaries
 release:
-	GOOS=windows GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o dist/distrike_windows_amd64.exe ./...
-	GOOS=linux   GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o dist/distrike_linux_amd64     ./...
-	GOOS=darwin  GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o dist/distrike_darwin_amd64    ./...
-	GOOS=darwin  GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o dist/distrike_darwin_arm64    ./...
+	GOOS=windows GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o dist/distrike_windows_amd64.exe .
+	GOOS=linux   GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o dist/distrike_linux_amd64     .
+	GOOS=darwin  GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o dist/distrike_darwin_amd64    .
+	GOOS=darwin  GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o dist/distrike_darwin_arm64    .
 
 install: build
 	install -m755 distrike$(shell go env GOEXE) $(GOPATH)/bin/distrike$(shell go env GOEXE)
