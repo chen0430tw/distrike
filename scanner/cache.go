@@ -70,11 +70,16 @@ func (c *Cache) InitDB() error {
 		engine      TEXT    NOT NULL DEFAULT '',
 		duration_ms INTEGER NOT NULL DEFAULT 0,
 		coverage    REAL    NOT NULL DEFAULT 0,
-		scan_time   INTEGER NOT NULL DEFAULT 0
+		scan_time   INTEGER NOT NULL DEFAULT 0,
+		dev_id      INTEGER NOT NULL DEFAULT 0
 	);
 	`
-	_, err := c.db.Exec(schema)
-	return err
+	if _, err := c.db.Exec(schema); err != nil {
+		return err
+	}
+	// Migration: add dev_id to existing databases that predate this column.
+	_, _ = c.db.Exec(`ALTER TABLE scan_meta ADD COLUMN dev_id INTEGER NOT NULL DEFAULT 0`)
+	return nil
 }
 
 // Close closes the underlying database connection.
@@ -86,7 +91,7 @@ func (c *Cache) Close() error {
 }
 
 // Load retrieves a cached scan result if fresh enough (scan_time + ttl > now).
-// Returns nil, nil if no valid cache exists.
+// Returns nil, nil if no valid cache exists or the filesystem has changed.
 func (c *Cache) Load(rootPath string) (*ScanResult, error) {
 	now := time.Now().Unix()
 
@@ -99,11 +104,12 @@ func (c *Cache) Load(rootPath string) (*ScanResult, error) {
 		durationMs int64
 		coverage   float64
 		scanTime   int64
+		cachedDevID int64
 	)
 	err := c.db.QueryRow(
-		`SELECT total_bytes, free_bytes, used_bytes, engine, duration_ms, coverage, scan_time
+		`SELECT total_bytes, free_bytes, used_bytes, engine, duration_ms, coverage, scan_time, dev_id
 		 FROM scan_meta WHERE root_path = ?`, rootPath,
-	).Scan(&totalBytes, &freeBytes, &usedBytes, &engine, &durationMs, &coverage, &scanTime)
+	).Scan(&totalBytes, &freeBytes, &usedBytes, &engine, &durationMs, &coverage, &scanTime, &cachedDevID)
 
 	if err == sql.ErrNoRows {
 		return nil, nil // no cache
@@ -115,6 +121,13 @@ func (c *Cache) Load(rootPath string) (*ScanResult, error) {
 	// Check TTL
 	if scanTime+int64(c.ttl.Seconds()) <= now {
 		return nil, nil // expired
+	}
+
+	// Validate filesystem identity: if a new filesystem was mounted over the cached
+	// path (e.g. tmpfs or loop device), the device ID changes and the cache is stale.
+	// Also invalidates legacy entries where dev_id=0 (saved before this check existed).
+	if currentDevID := getDeviceID(rootPath); currentDevID != 0 && cachedDevID != currentDevID {
+		return nil, nil // filesystem changed or legacy cache — treat as cache miss
 	}
 
 	// Load entries
@@ -175,10 +188,12 @@ func (c *Cache) Save(result *ScanResult) error {
 	}
 	defer tx.Rollback()
 
+	devID := getDeviceID(result.RootPath)
+
 	// Upsert scan_meta
 	_, err = tx.Exec(`
-		INSERT INTO scan_meta (root_path, total_bytes, free_bytes, used_bytes, engine, duration_ms, coverage, scan_time)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO scan_meta (root_path, total_bytes, free_bytes, used_bytes, engine, duration_ms, coverage, scan_time, dev_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(root_path) DO UPDATE SET
 			total_bytes = excluded.total_bytes,
 			free_bytes  = excluded.free_bytes,
@@ -186,9 +201,10 @@ func (c *Cache) Save(result *ScanResult) error {
 			engine      = excluded.engine,
 			duration_ms = excluded.duration_ms,
 			coverage    = excluded.coverage,
-			scan_time   = excluded.scan_time
+			scan_time   = excluded.scan_time,
+			dev_id      = excluded.dev_id
 	`, result.RootPath, result.TotalBytes, result.FreeBytes, result.UsedBytes,
-		result.EngineName, result.DurationMs, result.ScanCoverage, now)
+		result.EngineName, result.DurationMs, result.ScanCoverage, now, devID)
 	if err != nil {
 		return fmt.Errorf("upserting scan_meta: %w", err)
 	}
