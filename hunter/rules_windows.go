@@ -353,22 +353,43 @@ func platformSpecificRules() []Rule {
 			Action:      Action{Type: "manual", Hint: "Delete folder — WeChat re-downloads video thumbnails/previews on demand"}},
 
 		// --- QQ / QQNT cache ---
+		// IMPORTANT: QQ does NOT long-retain server-side media. Roaming window is
+		// 7d (free) / 30d (VIP) / 2y (SVIP). Beyond that, the local file under
+		// nt_qq/nt_data/Pic|Video IS the canonical copy — deletion is permanent.
+		// Tencent's own built-in cleaner (设置 → 存储管理 → 清理缓存) is conservative
+		// and only touches "render cache" type folders, never nt_data/Pic|Video.
+
 		{Pattern: "*/Tencent Files/*/Cache", Kind: KindCache, Risk: RiskSafe, Platform: "windows",
-			Description: "QQ render cache",
+			Description: "QQ render cache (legacy QQ, pre-NT)",
 			Action:      Action{Type: "manual", Hint: "Delete Cache folder contents"}},
 		{Pattern: "*/Tencent/QQNT/*/Cache", Kind: KindCache, Risk: RiskSafe, Platform: "windows",
 			Description: "QQNT (new QQ) app cache",
 			Action:      Action{Type: "manual", Hint: "Delete Cache folder contents"}},
-		// QQNT media received in chat — auto-saved by QQ, re-downloadable from chat history
-		{Pattern: "*/nt_qq/nt_data/Pic", Kind: KindCache, Risk: RiskCaution, Platform: "windows",
-			Description: "QQNT auto-saved chat images (re-downloadable from chat history)",
-			Action:      Action{Type: "manual", Hint: "Delete folder — QQ will re-download images from chat history on demand"}},
-		{Pattern: "*/nt_qq/nt_data/Video", Kind: KindCache, Risk: RiskCaution, Platform: "windows",
-			Description: "QQNT auto-saved chat videos (re-downloadable from chat history)",
-			Action:      Action{Type: "manual", Hint: "Delete folder — QQ will re-download videos from chat history on demand"}},
+
+		// QQNT received media — DO NOT TREAT AS DISPOSABLE CACHE.
+		// Tencent expires server-side originals after the roaming window above,
+		// after which these local files are the only copy.
+		{Pattern: "*/nt_qq/nt_data/Pic", Kind: KindCache, Risk: RiskDanger, Platform: "windows",
+			Description: "QQNT local image store — Tencent only keeps server originals during the roaming window (7d free / 30d VIP / 2y SVIP). Older images are unrecoverable once deleted.",
+			Action:      Action{Type: "manual", Hint: "Save important images first. Use QQ's built-in 设置→存储管理 for safer partial cleanup."}},
+		{Pattern: "*/nt_qq/nt_data/Video", Kind: KindCache, Risk: RiskDanger, Platform: "windows",
+			Description: "QQNT local video store — same retention as Pic; deletion of older videos is permanent.",
+			Action:      Action{Type: "manual", Hint: "Save important videos first. Use QQ's built-in 设置→存储管理 for safer partial cleanup."}},
 		{Pattern: "*/nt_qq/nt_data/Emoji", Kind: KindCache, Risk: RiskSafe, Platform: "windows",
-			Description: "QQNT emoji cache",
-			Action:      Action{Type: "manual", Hint: "Delete folder — QQ re-downloads emoji as needed"}},
+			Description: "QQNT emoji cache (system + market emoji — re-downloadable from emoji catalog)",
+			Action:      Action{Type: "manual", Hint: "Safe to delete — QQ re-downloads emoji on next use"}},
+
+		// QQNT 9.x relocated some caches to AppData\Local\TencentQQ\<id>\<media>.
+		// Same retention semantics as nt_qq/nt_data — RiskDanger for image/video.
+		{Pattern: "*/AppData/Local/TencentQQ/*/Image", Kind: KindCache, Risk: RiskDanger, Platform: "windows",
+			Description: "QQNT 9.x local image store (new path) — same Tencent retention rules as nt_qq/nt_data/Pic",
+			Action:      Action{Type: "manual", Hint: "Save important images first."}},
+		{Pattern: "*/AppData/Local/TencentQQ/*/Video", Kind: KindCache, Risk: RiskDanger, Platform: "windows",
+			Description: "QQNT 9.x local video store (new path) — same retention as Pic",
+			Action:      Action{Type: "manual", Hint: "Save important videos first."}},
+		{Pattern: "*/AppData/Local/TencentQQ/*/web", Kind: KindCache, Risk: RiskSafe, Platform: "windows",
+			Description: "QQNT 9.x web cache (chromium subprocess cache)",
+			Action:      Action{Type: "manual", Hint: "Safe to delete — re-fetched by embedded browser as needed"}},
 
 		// --- OBS Studio ---
 		{Pattern: "*/obs-studio/logs", Kind: KindLog, Risk: RiskSafe, Platform: "windows",
