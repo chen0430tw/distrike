@@ -15,10 +15,21 @@ type Rule struct {
 
 // BuiltinRules returns all built-in prey identification rules.
 // Rules are organized by platform and category.
+//
+// Rule sources, in match-priority order (matcher returns the FIRST match):
+//  1. commonCacheRules        — cross-platform package managers, IDE caches, etc.
+//  2. platformRules           — hand-curated per-OS rules (rules_{windows,linux,darwin}.go)
+//  3. platformDiscoveredRules — runtime-discovered (currently: Windows VolumeCaches
+//                               registry — same source SilentCleanup uses; nil on
+//                               other platforms)
+//
+// Hand-curated rules win on overlap, so a registry-discovered "Temporary Files"
+// handler won't override the more accurate built-in "*/AppData/Local/Temp" rule.
 func BuiltinRules() []Rule {
 	var rules []Rule
 	rules = append(rules, commonCacheRules()...)
 	rules = append(rules, platformRules()...)
+	rules = append(rules, platformDiscoveredRules()...)
 	return rules
 }
 
