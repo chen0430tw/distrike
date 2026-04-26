@@ -160,6 +160,41 @@ Distrike 用**绝对剩余空间**对比**kill-line 阈值**：
 
 所以叫它 **kill-line（斩杀线）**，不是警告线。越过就无法自救，需要人工干预。完整数学推导见 [DESIGN.md](docs/DESIGN.md)。
 
+## Distrike vs Windows SilentCleanup
+
+Windows 自带一个清理任务 `\Microsoft\Windows\DiskCleanup\SilentCleanup`，会在剩余空间低于 ~200 MB 或系统空闲 ≥1 小时时自动跑。它本质上就是 `cleanmgr.exe /autoclean`，从注册表 `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\VolumeCaches` 读"被认证的清理处理器"列表。
+
+很有用，但能力有限。Distrike 是来填空的。
+
+| | Windows SilentCleanup | Distrike |
+|---|---|---|
+| 触发方式 | 自动：低空间 + 1 小时空闲 | 手动 / 定时 / `watch --auto-clean` |
+| 覆盖范围 | `VolumeCaches` 里 `Autorun=1` 的 handler | 内置 190+ 规则 + 注册表 handler + vdisk + 第三方应用 |
+| 风险模型 | 无（二选一：清或不清） | 三档 Safe / Caution / Danger，每个应用语义化 |
+| QQ / 微信 / Discord | 完全不碰 | 识别并区分"缓存" vs "不可恢复的用户数据" |
+| WSL / Docker / Hyper-V VHDX | 完全不碰 | 识别 + 集成 `fstrim` + `diskpart compact` 工作流 |
+| HuggingFace / pip / cargo / Singularity | 完全不碰 | 识别并给出回收命令 |
+| 自定义规则 | 不支持 | 白名单 + 自定义规则文件 |
+| 审计 | 只有 `LastTaskResult` | JSON 输出 / scan cache / watch 趋势日志 |
+
+**Distrike 读的是跟 SilentCleanup 同一个 `VolumeCaches` 注册表**，所以 NVIDIA / Adobe / Visual Studio 等装过的第三方清理 handler 也会出现在 `hunt` 输出里，标 `[VolumeCaches]` 做来源透明。重叠时内置规则优先。重要注意点：
+
+- 大多数 handler 注册的是 COM-only 目标（`IEmptyVolumeCache`），没有可解析的路径——这些会被跳过。
+- 任何 `Folder` 字段指向驱动器根 / `%SystemRoot%` / `%UserProfile%` / 顶层用户库（`Downloads`、`Documents` 等）的 handler 也会被跳过：那个字段是 cleanmgr COM 逻辑的*扫描根*，不是"删整个目录"的指令。递归删掉会出大事。
+- 出于同一原因，**所有 `[VolumeCaches]` 规则都标 DANGER**，提示使用 `cleanmgr` 而不是 `distrike clean`。Distrike 不会自动删这些路径。
+
+**推荐工作流**：让 SilentCleanup 后台搞定 OS 已知安全项，剩下的（聊天软件、VHDX、容器镜像、HPC 缓存）交给 `distrike hunt`。
+
+### 关于 QQ 自带的清理功能
+
+QQ 自带清理入口在 **设置 → 存储管理 → 清理缓存**。它是清 QQ 的**最安全**选项——它知道哪些是渲染缓存、哪些是聊天正本——但它能力很有限：
+
+- 只清渲染缓存和少数已知 temp 目录；**完全不动 `nt_qq/nt_data/Pic` 和 `Video`**（即那些动辄几十 GB 的本体存储）
+- 没有 glob / 预览 / 白名单，点之前看不到要删什么
+- 没有 CLI / 脚本接口
+
+Distrike 会*识别* QQ 本地图片/视频存储并报告大小，但风险评级是 `DANGER`——腾讯服务器只在漫游期内（7天/30天/2年，按会员等级）保留原图，超过期限后本地这份**就是唯一一份**。建议先用 QQ 自带清理跑一遍安全清理，要动 `nt_data/Pic|Video` 务必先把重要图片另存为，再让 `distrike clean` 动手。
+
 ## 绝对不碰什么
 
 - Cookies、浏览历史、保存的密码、书签

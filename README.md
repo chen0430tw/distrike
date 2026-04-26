@@ -152,6 +152,41 @@ Small system partitions (`/boot`, `/boot/efi`) never trigger false CRITICAL sign
 | conda pkgs | 2–10 GB | Package tarballs after env creation |
 | Old training checkpoints | 500 MB–50 GB | `.pt`/`.ckpt` from abandoned runs |
 
+## Distrike vs Windows SilentCleanup
+
+Windows ships with a built-in cleanup task — `\Microsoft\Windows\DiskCleanup\SilentCleanup` — that auto-runs when free space drops below ~200 MB or when the system has been idle ≥1 hour. Internally it just calls `cleanmgr.exe /autoclean` and consults `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\VolumeCaches` for the list of "approved" cleanup handlers.
+
+It's useful, but limited. Distrike fills the gaps.
+
+| | Windows SilentCleanup | Distrike |
+|---|---|---|
+| Trigger | Auto: low space + 1 h idle | Manual / scheduled / `watch --auto-clean` |
+| Scope | `VolumeCaches` registry handlers with `Autorun=1` | Curated 190+ rules + registry handlers + vdisk + third-party apps |
+| Risk model | None (binary: included or excluded) | 3-tier: Safe / Caution / Danger, semantic per app |
+| QQ / WeChat / Discord | Not touched | Identified, distinguishes cache from non-recoverable user data |
+| WSL / Docker / Hyper-V VHDX | Not touched | Identified + integrated `fstrim` + `diskpart compact` workflow |
+| HuggingFace / pip / cargo / Singularity | Not touched | Identified with reclaim commands |
+| Per-machine custom rules | No | Whitelist + custom rule files |
+| Audit trail | `LastTaskResult` only | JSON output, scan cache, `watch` trend logs |
+
+**Distrike reads the same `VolumeCaches` registry SilentCleanup uses**, so any third-party cleanup handler installed by NVIDIA, Adobe, Visual Studio, etc. shows up in `hunt` output tagged `[VolumeCaches]`. Built-in distrike rules take precedence on overlap. Important caveats:
+
+- Most handlers register a COM-only target (`IEmptyVolumeCache`) with no resolvable path — these are skipped.
+- Handlers whose `Folder` value is a drive root, `%SystemRoot%`, `%UserProfile%`, or a top-level user library (`Downloads`, `Documents`, …) are also skipped: that field is a *scan root* for cleanmgr's COM logic, not a "delete the whole folder" target. Recursing into it would be catastrophic.
+- For the same reason, every `[VolumeCaches]` rule is rated **DANGER** with a hint to use `cleanmgr` rather than `distrike clean`. Distrike never auto-deletes these paths.
+
+**Recommended flow:** let SilentCleanup handle the OS-known safe stuff in the background, then run `distrike hunt` for everything Microsoft doesn't catalogue (chat clients, VHDX, container layers, HPC caches).
+
+### A note on QQ's built-in cleaner
+
+QQ ships its own cleaner at **设置 → 存储管理 → 清理缓存**. It's the *safest* option for QQ — it knows which files are render cache vs. canonical chat media — but it's also limited:
+
+- Only clears render cache and a few well-known temp dirs; ignores `nt_qq/nt_data/Pic` and `Video` (the multi-GB stores)
+- No glob/preview/whitelist; you can't see what it will delete before clicking
+- No CLI / scriptable hook
+
+Distrike will *find* QQ's local image stores and report their size, but rates them `DANGER` — Tencent's server-side originals expire after the roaming window (7d free / 30d VIP / 2y SVIP), so deleting the local file usually means losing the image forever. Use QQ's built-in cleaner for the safe partial cleanup; only let `distrike clean` touch `nt_data/Pic|Video` after you've manually saved anything you care about.
+
 ## What it never touches
 
 - Cookies, browsing history, saved passwords, bookmarks
