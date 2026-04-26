@@ -138,7 +138,8 @@ func runClean(cmd *cobra.Command, args []string) error {
 
 	// Dry-run: show plan and exit
 	if cleanDryRun {
-		fmt.Println("Dry-run: the following items would be cleaned:\n")
+		fmt.Println("Dry-run: the following items would be cleaned:")
+		fmt.Println()
 		var total int64
 		for _, p := range prey {
 			tag := "[" + strings.ToUpper(string(p.Risk)) + "]"
